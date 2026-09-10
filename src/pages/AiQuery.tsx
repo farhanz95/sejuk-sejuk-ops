@@ -41,10 +41,15 @@ function answerInBrowser(question: string, data: OpsData, note?: string): AiResp
   } catch (err) {
     rows = { error: err instanceof Error ? err.message : String(err) };
   }
+  // Never surface a raw technical error (e.g. "Unexpected token '<'") to a
+  // manager — say what happened in plain language instead.
+  const because = /unavailable|fetch|network|Failed to fetch/i.test(note ?? '')
+    ? 'the AI service could not be reached'
+    : 'server-side AI is not configured on this host';
   return {
     answer:
       heuristicAnswer(question, query.name, rows) +
-      (note ? `\n\n_(the AI endpoint was unavailable — answered locally from the same controlled query: ${note})_` : ''),
+      (note ? `\n\n_Answered in the browser from the same controlled query (${because}), so the figures are identical to the server path._` : ''),
     query_used: query.name,
     args_used: choice.args,
     planner: 'heuristic',

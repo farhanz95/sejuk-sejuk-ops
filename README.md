@@ -90,7 +90,14 @@ Set these Vercel env vars (Project → Settings → Environment Variables) for t
 ```bash
 npm test           # 47 tests: business rules, aggregations, AI planner, API handler, workflow, UI render
 npm run seed:sql   # regenerate supabase/seed.sql from src/lib/seed.ts
+npm run verify:live  # drives the DEPLOYED site in Chrome and screenshots every step into scripts/shots/
 ```
+
+`npm run verify:live` (puppeteer-core + the Chrome already on the machine) walks the deployed build the way a
+person would — pick the Admin role, create an order, switch to the technician on a phone-sized viewport, complete
+that same order, read the generated WhatsApp deep link, approve it as Manager, open the KPI dashboard and ask the
+AI window a question — and writes `shots/summary.json` with the order number, the notification text, the deep link
+and every console error it saw (currently: none). Exported as a quick end-to-end smoke test for a deployed build.
 
 ---
 
