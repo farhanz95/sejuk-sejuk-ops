@@ -6,8 +6,11 @@ plus an **AI operations query window** that answers manager questions from contr
 
 Built for the *Programmer Assessment – Operations System + AI Challenge* (9–12 Sep 2026).
 
-- **Live demo:** _add your Vercel URL here after deploying_ — opens on seeded demo data, no setup needed
-- **Repo:** this repository
+- **Live demo:** <https://sejuk-sejuk-ops.web.app> — opens straight into seeded demo data, no setup, no login required
+  (Firebase Hosting. On a static-only host there is no serverless function, so the AI window answers from the same controlled
+  queries in the browser and labels the answer `source: browser`; on Vercel the same questions go through `/api/ai-query`,
+  i.e. the server-side planner — see §5.)
+- **Repo:** <https://github.com/farhanz95/sejuk-sejuk-ops>
 - **Stack:** React 18 + TypeScript + Vite + Tailwind CSS 4 · Supabase (Postgres + Storage) · Vercel serverless function for the AI · `node:test` for unit tests
 
 ---

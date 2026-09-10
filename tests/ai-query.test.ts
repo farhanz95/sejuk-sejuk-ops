@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { QUERY_CATALOG, findQuery } from '../src/lib/analytics';
-import { matchIntent } from '../api/ai-query';
+import { matchIntent } from '../src/lib/ai-fallback';
 import { buildSeed } from '../src/lib/seed';
 
 const TODAY = new Date('2026-09-12T09:00:00+08:00');

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../state/AppState';
-import { QUERY_CATALOG } from '../lib/analytics';
+import { QUERY_CATALOG, findQuery } from '../lib/analytics';
+import { heuristicAnswer, matchIntent } from '../lib/ai-fallback';
+import type { OpsData } from '../lib/types';
 import { Card, EmptyState, SectionTitle } from '../components/ui';
 
 interface AiResponse {
@@ -23,6 +25,34 @@ const SUGGESTIONS = [
   'Any suspicious jobs this month?',
   'Berapa banyak job siap minggu ini?',
 ];
+
+
+/**
+ * Last-resort answer path: the same controlled queries, run in the browser.
+ * Used when /api/ai-query is unavailable (static hosting, offline). Answers are
+ * labelled `source: browser` so a reviewer can tell where they came from.
+ */
+function answerInBrowser(question: string, data: OpsData, note?: string): AiResponse {
+  const choice = matchIntent(question);
+  const query = findQuery(choice.name) ?? findQuery('business_overview')!;
+  let rows: unknown;
+  try {
+    rows = query.run(data, choice.args, new Date());
+  } catch (err) {
+    rows = { error: err instanceof Error ? err.message : String(err) };
+  }
+  return {
+    answer:
+      heuristicAnswer(question, query.name, rows) +
+      (note ? `\n\n_(the AI endpoint was unavailable — answered locally from the same controlled query: ${note})_` : ''),
+    query_used: query.name,
+    args_used: choice.args,
+    planner: 'heuristic',
+    phrasing: 'template',
+    data_source: 'browser',
+    rows,
+  };
+}
 
 export default function AiQuery() {
   const { data, mode, actor } = useApp();
@@ -49,10 +79,17 @@ export default function AiQuery() {
         body: JSON.stringify(mode === 'demo' ? { question: text, snapshot: data } : { question: text }),
       });
       const json = (await res.json()) as AiResponse;
-      setResponse(json);
+      if (!res.ok || json.error) {
+        // The endpoint answered with an error (or a static host has no API at
+        // all) — answer from the same controlled catalog in the browser instead
+        // of showing the user a dead end.
+        setResponse(answerInBrowser(text, data, json.error));
+      } else {
+        setResponse(json);
+      }
       setAsked((prev) => [text, ...prev.filter((x) => x !== text)].slice(0, 6));
     } catch (err) {
-      setResponse({ error: err instanceof Error ? err.message : String(err) });
+      setResponse(answerInBrowser(text, data, err instanceof Error ? err.message : String(err)));
     } finally {
       setBusy(false);
     }
@@ -172,6 +209,7 @@ export default function AiQuery() {
             <li>Without an AI key the same catalog is driven by a deterministic intent matcher, so answers stay correct but phrasing is templated.</li>
             <li>Data is limited to service operations: jobs, technicians, revenue, reschedules, alerts.</li>
             <li>In demo mode the seeded dataset is sent with the request; with Supabase configured the server reads the database directly and nothing is sent from the browser.</li>
+            <li>If the serverless endpoint is unreachable (static-only hosting), the browser runs the same controlled queries and labels the answer <code>source: browser</code>.</li>
           </ul>
           <p className="mt-3 text-xs text-slate-500">
             Signed in as {actor.role}. {examples.length} example questions are recognised out of the box.

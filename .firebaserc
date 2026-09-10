@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "lifehack-681b1"
+  },
+  "targets": {
+    "lifehack-681b1": {
+      "hosting": {
+        "sejuk-sejuk-ops": ["sejuk-sejuk-ops"]
+      }
+    }
+  }
+}
