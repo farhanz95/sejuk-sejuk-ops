@@ -93,6 +93,19 @@ Set these Vercel env vars (Project → Settings → Environment Variables) for t
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | server-side reads for the AI endpoint |
 | `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL` | any OpenAI-compatible provider (OpenAI, DeepSeek, Groq, OpenRouter, local llama.cpp…) |
 
+**Provider used for the assessment:** Groq's free tier — `AI_BASE_URL=https://api.groq.com/openai/v1`,
+`AI_MODEL=openai/gpt-oss-120b`. It was chosen because it is free and rate-limited rather than pay-per-token, and
+because it returns proper `tool_calls` for the planner. Two measured findings are baked into the code:
+
+1. The planner returns human-ish arguments (`{"range":"last week"}`, `{"technician":"ALI"}`), so
+   `normalizeArgs()` in `api/ai-query.ts` translates them to the catalog's vocabulary (`last_week`, `Ali`). Without
+   it, "last week" missed every branch and silently became "this week" — a wrong figure with no error anywhere.
+2. The text models on that key (`llama-3.x`) 404, and `groq/compound-mini` rejects `tool_choice: required`;
+   `openai/gpt-oss-120b` and `qwen/qwen3.8-27b` both plan correctly.
+
+Because aggression-free models are weaker, the design leans on the fact that **the model never computes anything**:
+it picks a catalog entry and phrases rows that were aggregated in code.
+
 ### Where the data lives
 
 `supabase/schema.sql` creates `orders`, `service_reports`, `attachments`, `order_events` and `notifications` plus the
@@ -249,8 +262,12 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
   unpaid balances over RM 200") are routed to the overview and answered with a limitation note rather than
   improvised SQL. Extending the system means adding a query to the catalog — a deliberate choice, trade-off
   discussed in §4.3.
-- **No AI key → templated phrasing.** Correct numbers, generic wording. Adding a key switches the planner and the
-  phraser to the model without code changes.
+- **No AI key (or no serverless host) → templated phrasing.** Correct numbers, generic wording: `/api/ai-query` is a
+  serverless function, and the Firebase-only deployment does not run functions, so the live demo answers from the
+  same controlled queries in the browser and labels it (`source: browser`). Deploying the repo to Vercel with
+  `AI_API_KEY` set switches the planner and the phraser to the model with no code change. Model choice is
+  deliberately swappable: any OpenAI-compatible endpoint works, and the free-tier models tested here are weaker at
+  prose but equally reliable at the two things they are asked to do.
 - **Demo mode is browser-local.** Data lives in `localStorage` and uploaded files stay object URLs for that
   session, so the demo does not persist across devices; it also sends the seeded snapshot to the API because
   there is no database behind it. Cloud mode removes both caveats.

@@ -127,6 +127,59 @@ async function loadFromSupabase(): Promise<OpsData | null> {
   };
 }
 
+/**
+ * Normalise whatever the model put in the tool arguments.
+ *
+ * Real behaviour from Groq's free models (measured): the planner returns
+ * `{"range":"last week"}` / `"this week"` — with a SPACE — while the catalog
+ * matches on `last_week` / `this_week`. Left alone, "last week" would miss every
+ * branch and silently fall through to the default (this week), i.e. a wrong
+ * number with no error anywhere. Same story for technician casing and for
+ * numeric arguments arriving as strings.
+ */
+export function normalizeArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...args };
+
+  if (typeof out.range === 'string') {
+    const raw = out.range.toLowerCase().trim();
+    const slug = raw.replace(/[\s-]+/g, '_').replace(/^last7days$/, 'last_7_days');
+    const aliases: Record<string, string> = {
+      today: 'today',
+      this_week: 'this_week',
+      current_week: 'this_week',
+      week: 'this_week',
+      last_week: 'last_week',
+      previous_week: 'last_week',
+      last_7_days: 'last_7_days',
+      past_7_days: 'last_7_days',
+      this_month: 'this_month',
+      current_month: 'this_month',
+      month: 'this_month',
+      last_month: 'last_month',
+      previous_month: 'last_month',
+      all_time: 'all_time',
+      all: 'all_time',
+      ever: 'all_time',
+    };
+    out.range = aliases[slug] ?? aliases[slug.replace(/_days?$/, '')] ?? slug;
+  }
+
+  if (typeof out.technician === 'string') {
+    const wanted = out.technician.trim().toLowerCase();
+    const match = TECHNICIAN_NAMES.find((t) => t.toLowerCase() === wanted)
+      ?? TECHNICIAN_NAMES.find((t) => wanted.includes(t.toLowerCase()));
+    if (match) out.technician = match;
+  }
+
+  for (const key of ['older_than_days', 'ratio_threshold']) {
+    if (typeof out[key] === 'string' && out[key] !== '') {
+      const n = Number(out[key]);
+      if (Number.isFinite(n)) out[key] = n;
+    }
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------- LLM --- */
 
 interface LlmConfig {
@@ -193,7 +246,7 @@ async function chooseQueryWithLlm(cfg: LlmConfig, question: string): Promise<Llm
   } catch {
     args = {};
   }
-  return { name: call.name, args };
+  return { name: call.name, args: normalizeArgs(args) };
 }
 
 /** Ask the model to phrase the already-retrieved rows as an answer. */
@@ -209,6 +262,7 @@ async function phraseAnswerWithLlm(cfg: LlmConfig, question: string, queryName: 
           role: 'system',
           content:
             'You answer operational questions for an air-conditioner service company using ONLY the JSON rows provided. ' +
+            'Reply in 1-3 short sentences of plain prose for a manager — never output JSON, never restate the raw rows. ' +
             'Be concise and specific: quote order numbers, technicians and RM amounts. ' +
             'If the rows are empty or an error field is present, say so plainly and suggest a narrower question. ' +
             'Never invent jobs, amounts or technicians. Answer in the same language as the question (English or Malay).',
