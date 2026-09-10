@@ -18,7 +18,7 @@ interface PendingFile {
 export default function TechJobs() {
   const { orderNo } = useParams();
   const navigate = useNavigate();
-  const { data, actor, completeJob, repo, markSent } = useApp();
+  const { data, actor, completeJob, startJob, repo, markSent } = useApp();
 
   const [openNo, setOpenNo] = useState<string | null>(orderNo ?? null);
   const [workDone, setWorkDone] = useState('');
@@ -168,15 +168,26 @@ export default function TechJobs() {
                     🗺️ Directions
                   </a>
                   {actionable ? (
-                    <button
-                      className="btn-primary ml-auto !py-2"
-                      onClick={() => {
-                        reset();
-                        setOpenNo(o.order_no);
-                      }}
-                    >
-                      ✔ Complete job
-                    </button>
+                    <>
+                      {o.status === 'Assigned' ? (
+                        <button
+                          className="btn-secondary !py-2"
+                          title="Tell the office you have arrived and started work"
+                          onClick={() => void startJob(o.order_no)}
+                        >
+                          ▶ Start job
+                        </button>
+                      ) : null}
+                      <button
+                        className="btn-primary !py-2 md:ml-auto"
+                        onClick={() => {
+                          reset();
+                          setOpenNo(o.order_no);
+                        }}
+                      >
+                        ✔ Complete job
+                      </button>
+                    </>
                   ) : report ? (
                     <button className="btn-secondary ml-auto !py-2" onClick={() => navigate(`/orders/${o.order_no}`)}>
                       View report

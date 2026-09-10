@@ -82,6 +82,12 @@ export default function OrderDetail() {
             <span className="chip bg-slate-100 text-slate-600">👷 {o.assigned_technician ?? 'unassigned'}</span>
           )}
 
+          {canComplete && o.status === 'Assigned' ? (
+            <button className="btn-secondary" onClick={() => void startJob(o.order_no)}>
+              ▶ Start job
+            </button>
+          ) : null}
+
           {canComplete && (o.status === 'Assigned' || o.status === 'In Progress') ? (
             <button className="btn-primary" onClick={() => navigate(`/jobs/${o.order_no}`)}>
               Complete this job

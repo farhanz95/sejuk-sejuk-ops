@@ -142,6 +142,9 @@ export class DemoRepo implements OpsRepo {
     const attachments: Attachment[] = input.attachments.map((a) => ({ id: uid('at'), report_id: reportId, ...a }));
     const finalAmount = computeFinalAmount(order.quoted_price, input.extra_charges);
 
+    /** Captured before the status is overwritten below. */
+    const wasAssigned = order.status === 'Assigned';
+
     const report: ServiceReport = {
       id: reportId,
       order_no: orderNo,
@@ -162,6 +165,12 @@ export class DemoRepo implements OpsRepo {
     order.status = 'Job Done';
     order.updated_at = now;
 
+    // A technician can complete a job without pressing "Start job" first (field
+    // reality: they tap Complete on arrival). Record the start anyway, so the
+    // audit trail never shows a job jumping from Assigned to Job Done.
+    if (wasAssigned) {
+      data.events.unshift(makeEvent(orderNo, 'started', actor, 'Work started (implied by completion)', now));
+    }
     data.events.unshift(makeEvent(orderNo, 'completed', actor, `Job done — final amount RM ${finalAmount.toFixed(2)} (quoted RM ${order.quoted_price.toFixed(2)} + extra RM ${input.extra_charges.toFixed(2)})`, now));
     if (input.payment_amount) {
       data.events.unshift(makeEvent(orderNo, 'payment_recorded', actor, `Payment RM ${input.payment_amount.toFixed(2)} via ${input.payment_method}`, now));
@@ -401,6 +410,10 @@ export class SupabaseRepo implements OpsRepo {
       );
     }
 
+    // Same rule as the demo repo: a completion from Assigned implies a start.
+    if (order.status === 'Assigned') {
+      await this.log(orderNo, 'started', actor, 'Work started (implied by completion)');
+    }
     await this.client.from('orders').update({ status: 'Job Done', updated_at: new Date().toISOString() }).eq('order_no', orderNo);
     await this.log(orderNo, 'completed', actor, `Job done — final amount RM ${finalAmount.toFixed(2)}`);
     if (input.payment_amount) await this.log(orderNo, 'payment_recorded', actor, `Payment RM ${input.payment_amount.toFixed(2)} via ${input.payment_method}`);
