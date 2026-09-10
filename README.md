@@ -6,7 +6,11 @@ plus an **AI operations query window** that answers manager questions from contr
 
 Built for the *Programmer Assessment – Operations System + AI Challenge* (9–12 Sep 2026).
 
-- **Live demo:** <https://sejuk-sejuk-ops.web.app> — no login, no setup
+- **Live demo (full AI):** <https://sejuk-sejuk-ops-five.vercel.app> — no login, no setup; this deployment runs the
+  serverless AI endpoint, so the assistant's planner **and** phraser are a real model (`planner: llm`, `answer: llm`)
+- **Live demo (static mirror):** <https://sejuk-sejuk-ops.web.app> — same app on Firebase Hosting; with no serverless
+  function there, the AI window runs the identical controlled queries in the browser and labels the answer
+  (`source: browser`)
 - **Repo:** <https://github.com/farhanz95/sejuk-sejuk-ops>
 - **Database:** Supabase project `sejuk-sejuk-ops` (Postgres 17, region Singapore) — 5 tables with 45 orders, 40 service
   reports, 58 attachments, 252 audit events and 40 notifications. The deployed build is wired to it, so the live demo
@@ -18,7 +22,8 @@ Built for the *Programmer Assessment – Operations System + AI Challenge* (9–
 | --- | --- | --- |
 | Front end | Firebase Hosting (`sejuk-sejuk-ops.web.app`) | `npm run build` output; `firebase.json` + `.firebaserc` in the repo |
 | Database + storage | Supabase `sejuk-sejuk-ops` | schema + seed applied from `supabase/schema.sql` / `supabase/seed.sql` |
-| AI query endpoint | **not deployed on the static host** | `/api/ai-query` answers 404-HTML there, so the AI window deliberately falls back to running the same controlled queries in the browser and says so — see §5. Deploying the repo to Vercel activates the server-side (LLM) path with no code change. |
+| AI query endpoint | Vercel function `api/ai-query` | `server/ai-query.ts` is bundled to `api/ai-query.js` by `npm run build:api` (Vercel ships a bare TS entry point without bundling, which made every request 500 with `ERR_MODULE_NOT_FOUND`). Reads Supabase server-side, calls the model, returns the answer. |
+| AI model | Groq free tier (`openai/gpt-oss-120b`) | key stored as a Vercel env var (`AI_API_KEY`), never in the repo or the browser bundle |
 - **Stack:** React 18 + TypeScript + Vite + Tailwind CSS 4 · Supabase (Postgres + Storage) · Vercel serverless function for the AI · `node:test` for unit tests
 
 ---
@@ -102,6 +107,9 @@ because it returns proper `tool_calls` for the planner. Two measured findings ar
    it, "last week" missed every branch and silently became "this week" — a wrong figure with no error anywhere.
 2. The text models on that key (`llama-3.x`) 404, and `groq/compound-mini` rejects `tool_choice: required`;
    `openai/gpt-oss-120b` and `qwen/qwen3.8-27b` both plan correctly.
+3. Asked about billing, the model answered **`$5,885`** for rows that are Ringgit, and asked "how many jobs this week"
+   it quoted the **all-time** count. Both are fixed in code — `enforceRmCurrency()` rewrites the currency, and the
+   overview now exposes `counts_by_status_in_period` alongside the all-time backlog — with tests for each.
 
 Because aggression-free models are weaker, the design leans on the fact that **the model never computes anything**:
 it picks a catalog entry and phrases rows that were aggregated in code.
@@ -116,7 +124,7 @@ without touching the schema.
 ### Tests
 
 ```bash
-npm test           # 47 tests: business rules, aggregations, AI planner, API handler, workflow, UI render
+npm test           # 68 tests: rules, aggregations, AI planner, prompts, API handler, workflow, UI render
 npm run seed:sql   # regenerate supabase/seed.sql from src/lib/seed.ts
 npm run verify:live  # drives the DEPLOYED site in Chrome and screenshots every step into scripts/shots/
 ```
@@ -285,7 +293,7 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
 
 ## 8. Tests
 
-`npm test` → **47 passing** (`node:test` + `tsx`):
+`npm test` → **68 passing** (`node:test` + `tsx`):
 
 - `tests/domain.test.ts` — order-number generation, quoted+extra maths, the three permission rules (including
   "another technician is refused"), draft/completion validation, the 6-file cap, the payment ceiling, the exact
@@ -295,6 +303,12 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
   that every catalog query runs, is described, and refuses unknown technicians instead of inventing rows.
 - `tests/ai-query.test.ts` — every question advertised in the UI maps to the intended controlled query, argument
   extraction (technician/period/days), and that no question can produce an out-of-catalog query.
+- `tests/ai-args-normalisation.test.ts` — the model returns `"last week"` / `"ALI"` / `"3"`; these must become
+  `last_week` / `Ali` / `3`, with the period assertions proving "last week" cannot collapse into "this week".
+- `tests/ai-answer-correctness.test.ts` — the currency guard (`$5,885` → `RM 5,885`, `USD`/`MYR` too), plus the
+  period-vs-backlog split in the overview (asking "this week" must not answer with all-time totals).
+- `tests/ai-prompts.test.ts` — the prompt instructions that exist *because* a real model response was wrong are
+  pinned as code: no JSON echo, RM-only currency, rows-only grounding, answer in the asker's language.
 - `tests/api-handler.test.ts` — the **real serverless handler** with mock req/res: 400s, 405, snapshot mode,
   leaderboard/finance/anomaly answers, unknown question degrading to the overview, and that no SQL leaks into
   an answer.

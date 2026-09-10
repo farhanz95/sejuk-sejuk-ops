@@ -9,7 +9,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeArgs } from '../api/ai-query';
+import { normalizeArgs } from '../server/ai-query';
 import { findQuery } from '../src/lib/analytics';
 import { buildSeed } from '../src/lib/seed';
 

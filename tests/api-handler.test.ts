@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import handler from '../api/ai-query';
+import handler from '../server/ai-query';
 import { buildSeed } from '../src/lib/seed';
 
 const snapshot = buildSeed({ today: new Date('2026-09-12T09:00:00+08:00') });

@@ -162,9 +162,24 @@ export function supervisorAlerts(data: OpsData, range: Range, ratioThreshold = 1
 export function businessOverview(data: OpsData, range: Range) {
   const leaderboard = technicianLeaderboard(data, range);
   const revenue = revenueSummary(data, range);
+  const statuses = ['New', 'Assigned', 'In Progress', 'Job Done', 'Reviewed', 'Closed'] as OrderStatus[];
+  const ordersInRange = data.orders.filter((o) => inRange(o.created_at, range));
   return {
     range: { from: range.from.toISOString(), to: range.to.toISOString() },
-    counts_by_status: (['New', 'Assigned', 'In Progress', 'Job Done', 'Reviewed', 'Closed'] as OrderStatus[]).map((s) => ({
+    // Two clearly-labelled views: the all-time backlog, and what arrived in the
+    // period. Reported from real use: asked "how many jobs this week?", the
+    // assistant answered with the all-time "Job Done" count, because only the
+    // all-time numbers were available.
+    counts_by_status_all_time: statuses.map((s) => ({
+      status: s,
+      count: data.orders.filter((o) => o.status === s).length,
+    })),
+    counts_by_status_in_period: statuses.map((s) => ({
+      status: s,
+      count: ordersInRange.filter((o) => o.status === s).length,
+    })),
+    orders_created_in_period: ordersInRange.length,
+    counts_by_status: statuses.map((s) => ({
       status: s,
       count: data.orders.filter((o) => o.status === s).length,
     })),

@@ -134,12 +134,15 @@ export function heuristicAnswer(question: string, queryName: string, data: unkno
       return `${alerts.length} job(s) flagged in ${label(d)}:\n${alerts.map((a) => `• ${a.order_no} (${a.technician}): ${(a.flags as string[]).join(' ')}`).join('\n')}`;
     }
     case 'business_overview': {
-      const counts = (d.counts_by_status as Json[]) ?? [];
+      const inPeriod = (d.counts_by_status_in_period as Json[]) ?? (d.counts_by_status as Json[]) ?? [];
+      const allTime = (d.counts_by_status_all_time as Json[]) ?? [];
       const rev = d.revenue as Json | undefined;
+      const live = inPeriod.filter((c) => Number(c.count) > 0).map((c) => `${c.count} ${c.status}`).join(', ');
       return (
-        `${label(d)} overview: ` +
-        counts.map((c) => `${c.count} ${c.status}`).join(', ') +
-        (rev ? `. Billed ${money(rev.total_billed)} across ${rev.jobs} completed jobs, outstanding ${money(rev.outstanding)}.` : '.') +
+        `In ${label(d)}: ${d.orders_created_in_period ?? '?'} order(s) were created` +
+        (live ? ` (${live})` : '') +
+        (rev ? `. ${rev.jobs} job(s) completed, billed ${money(rev.total_billed)}, outstanding ${money(rev.outstanding)}.` : '.') +
+        (allTime.length ? ` All-time backlog: ${allTime.map((c) => `${c.count} ${c.status}`).join(', ')}.` : '') +
         ((d.stalled_jobs as Json[])?.length ? ` ${(d.stalled_jobs as Json[]).length} job(s) have been open more than 3 days.` : '')
       );
     }

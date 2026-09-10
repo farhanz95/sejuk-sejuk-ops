@@ -226,6 +226,8 @@ async function chooseQueryWithLlm(cfg: LlmConfig, question: string): Promise<Llm
           content:
             'You are the query planner for an air-conditioner service operations system. ' +
             'Choose exactly ONE function to answer the question. Never invent data. ' +
+            'For period questions (\"this week\", \"today\"), use the fields ending in _in_period; ' +
+            'the _all_time fields describe the entire backlog and must be labelled as such. ' +
             `Known technicians: ${TECHNICIAN_NAMES.join(', ')}. ` +
             'If the question is outside service operations (jobs, technicians, revenue, reschedules, alerts), ' +
             'call business_overview and let the final answer explain the limitation.',
@@ -263,6 +265,7 @@ async function phraseAnswerWithLlm(cfg: LlmConfig, question: string, queryName: 
           content:
             'You answer operational questions for an air-conditioner service company using ONLY the JSON rows provided. ' +
             'Reply in 1-3 short sentences of plain prose for a manager — never output JSON, never restate the raw rows. ' +
+            // Measured: the free models rewrote "RM 5,885" as "$5,885". Currency is part of the answer.\n            'Write every amount as "RM <number>" (Malaysian Ringgit) exactly as it appears in the rows — never convert to $, USD or any other currency. ' +
             'Be concise and specific: quote order numbers, technicians and RM amounts. ' +
             'If the rows are empty or an error field is present, say so plainly and suggest a narrower question. ' +
             'Never invent jobs, amounts or technicians. Answer in the same language as the question (English or Malay).',
@@ -274,6 +277,21 @@ async function phraseAnswerWithLlm(cfg: LlmConfig, question: string, queryName: 
   if (!res.ok) return null;
   const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
   return json.choices?.[0]?.message?.content?.trim() || null;
+}
+
+/**
+ * The rows are Malaysian Ringgit, but the free-tier models kept rewriting
+ * "RM 5,885" as "$5,885" even with an explicit instruction not to. A wrong
+ * currency is a wrong answer, so the phrasing output is corrected in code
+ * rather than trusted: every $ / USD / MYR amount becomes RM.
+ */
+export function enforceRmCurrency(answer: string): string {
+  if (!answer) return answer;
+  return answer
+    .replace(/\bUSD\s?(\d[\d,]*(?:\.\d+)?)/gi, 'RM $1')
+    .replace(/\bMYR\s?(\d[\d,]*(?:\.\d+)?)/gi, 'RM $1')
+    .replace(/\$(\d[\d,]*(?:\.\d+)?)/g, 'RM $1')
+    .replace(/\bRM\s?RM\b/gi, 'RM');
 }
 
 /* ---------------------------------------------------------------- handler --- */
@@ -344,6 +362,7 @@ export default async function handler(req: { method?: string; body?: Body }, res
     }
   }
   if (!answer) answer = heuristicAnswer(question, query.name, result);
+  else answer = enforceRmCurrency(answer);
 
   res.status(200).json({
     answer,

@@ -4,9 +4,15 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/ai-query.ts": {
-      "maxDuration": 30
+    "api/ai-query.js": {
+      "maxDuration": 30,
+      "memory": 1024
     }
   },
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
 }
