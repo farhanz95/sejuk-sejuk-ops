@@ -83,6 +83,10 @@ create index if not exists order_events_order_idx on order_events (order_no, cre
 -- One report per order is enforced above; this keeps the upsert in the app honest.
 create unique index if not exists service_reports_order_unique on service_reports (order_no);
 
+-- One active WhatsApp notification per order: re-completing a job replaces the
+-- previous message instead of sending the customer a second one.
+create unique index if not exists notifications_order_unique on notifications (order_no);
+
 -- ---------------------------------------------------------------------------
 -- Row Level Security
 --

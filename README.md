@@ -88,7 +88,7 @@ Set these Vercel env vars (Project → Settings → Environment Variables) for t
 ### Tests
 
 ```bash
-npm test           # 35 tests: business rules, aggregations, AI planner, and the real API handler
+npm test           # 40 tests: business rules, aggregations, AI planner, API handler, full workflow
 npm run seed:sql   # regenerate supabase/seed.sql from src/lib/seed.ts
 ```
 
@@ -137,7 +137,7 @@ implementations (cloud and seeded demo). The same domain rules (`src/lib/domain.
 | `service_reports` | one completion per order (`unique(order_no)`) | `final_amount` stored explicitly (computed in the app as quoted + extra) so reporting never re-derives it |
 | `attachments` | N per report (≤ 6 enforced in the app) | name, mime, size, URL (Supabase Storage) |
 | `order_events` | append-only audit log | `created/assigned/started/completed/rescheduled/reviewed/closed/notified/payment_recorded` |
-| `notifications` | one per Job Done | message + `wa.me` deep link + `prepared`/`sent` status |
+| `notifications` | one active per order (`unique(order_no)`) | message + `wa.me` deep link + `prepared`/`sent` status; re-completing replaces it rather than messaging the customer twice |
 
 ---
 
@@ -241,7 +241,7 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
 
 ## 8. Tests
 
-`npm test` → **35 passing** (`node:test` + `tsx`):
+`npm test` → **40 passing** (`node:test` + `tsx`):
 
 - `tests/domain.test.ts` — order-number generation, quoted+extra maths, the three permission rules (including
   "another technician is refused"), draft/completion validation, the 6-file cap, the payment ceiling, the exact
@@ -254,6 +254,11 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
 - `tests/api-handler.test.ts` — the **real serverless handler** with mock req/res: 400s, 405, snapshot mode,
   leaderboard/finance/anomaly answers, unknown question degrading to the overview, and that no SQL leaks into
   an answer.
+- `tests/workflow.test.ts` — the full journey against the **real `DemoRepo`** the UI uses (localStorage
+  polyfilled): auto-generated order number, `New` → `Assigned` → `In Progress` → `Job Done` → `Reviewed` →
+  `Closed`, the audit trail containing every expected event, the notification being produced *by* the status
+  change, one report + one notification per order even after re-completion, the 6-file cap enforced at the data
+  layer, and the "another technician cannot complete your job" rule.
 
 ---
 

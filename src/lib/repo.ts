@@ -179,6 +179,9 @@ export class DemoRepo implements OpsRepo {
       deep_link: waDeepLink(order.phone, message),
       created_at: now,
     };
+    // A re-completed job keeps ONE notification, mirroring the one-report rule:
+    // the customer should not receive two messages for the same order number.
+    data.notifications = data.notifications.filter((n) => n.order_no !== orderNo);
     data.notifications.unshift(notification);
     data.events.unshift(makeEvent(orderNo, 'notified', { role: 'Admin', name: 'System' }, `WhatsApp message prepared for ${order.customer_name}`, now));
 
@@ -403,6 +406,8 @@ export class SupabaseRepo implements OpsRepo {
     if (input.payment_amount) await this.log(orderNo, 'payment_recorded', actor, `Payment RM ${input.payment_amount.toFixed(2)} via ${input.payment_method}`);
 
     const message = whatsAppMessage(order, input.technician_name, new Date().toISOString());
+    // Keep one notification per order (the schema enforces it with a unique index).
+    await this.client.from('notifications').delete().eq('order_no', orderNo);
     const { data: notifRow, error: notifError } = await this.client
       .from('notifications')
       .insert({ order_no: orderNo, channel: 'whatsapp', target: order.phone, message, status: 'prepared', deep_link: waDeepLink(order.phone, message) })
