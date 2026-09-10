@@ -38,7 +38,12 @@ const { AppStateProvider } = await import('../src/state/AppState');
 const container = dom.window.document.getElementById('root')!;
 let root: ReturnType<typeof createRoot>;
 
-async function mount(path = '/') {
+/**
+ * `keepRole` is for the reload test: the mock login now persists, so a fresh
+ * mount would otherwise inherit whichever role the previous test signed in as.
+ */
+async function mount(path = '/', opts: { keepRole?: boolean } = {}) {
+  if (!opts.keepRole) dom.window.localStorage.clear();
   container.innerHTML = '';
   root = createRoot(container);
   await act(async () => {
@@ -109,6 +114,67 @@ test('the New order dialog offers document reading', async () => {
   assert.match(body, /Read document/);
   assert.match(body, /or paste the text/);
   assert.match(body, /only the text is sent for reading/, 'it says what leaves the browser');
+});
+
+test('a technician sees only their own two tabs — no KPI, no AI, no company log', async () => {
+  await mount('/jobs');
+  await act(async () => {
+    const select = container.querySelector('select') as HTMLSelectElement;
+    select.value = 'Technician:Ali';
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+  const body = text();
+  assert.match(body, /My Jobs/);
+  assert.match(body, /My Activity/);
+  assert.ok(!/Dashboard/.test(body), 'no KPI dashboard tab for a technician');
+  assert.ok(!/AI Query/.test(body), 'no AI assistant tab for a technician');
+  assert.ok(!/Manager review/.test(body), 'no manager screen for a technician');
+  assert.ok(!/Review/.test(body), 'no review tab for a technician');
+});
+
+test('the technician history screen scopes itself to that technician', async () => {
+  await mount('/jobs');
+  await act(async () => {
+    const select = container.querySelector('select') as HTMLSelectElement;
+    select.value = 'Technician:Ali';
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+  // switching role deliberately lands on that role's home screen, so reach the
+  // history tab the way a technician would: by tapping it
+  await clickText('My Activity');
+  const body = text();
+  assert.match(body, /My activity/);
+  assert.match(body, /Jobs this week/);
+  assert.match(body, /My history/);
+  assert.match(body, /Messages for my customers/);
+  assert.match(body, /company revenue, the technician leaderboard/i, 'it says what is deliberately excluded');
+});
+
+test('the role survives a reload, so the guard keeps applying', async () => {
+  // sign in as a technician …
+  await mount('/jobs');
+  await act(async () => {
+    const select = container.querySelector('select') as HTMLSelectElement;
+    select.value = 'Technician:Ali';
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+
+  // … then reload straight onto a management URL (fresh provider, same storage)
+  await mount('/dashboard', { keepRole: true });
+  const body = text();
+  assert.ok(!/AI operational insight|Technician leaderboard/.test(body), 'a technician must not see the KPI dashboard after a reload');
+  assert.match(body, /My jobs/, 'they land back on their own queue instead');
+  assert.match(body, /Ali/);
+});
+
+test('an admin sees the operations tabs and no review queue', async () => {
+  await mount('/orders');
+  const body = text();
+  assert.match(body, /Orders/);
+  assert.match(body, /Dashboard/);
+  assert.match(body, /AI Query/);
+  assert.match(body, /Activity/);
+  assert.ok(!/\bReview\b/.test(body), 'admins do not review jobs');
 });
 
 test('the technician view lists only that technician\'s jobs', async () => {

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import { useApp, ROLE_OPTIONS } from './state/AppState';
+import { homeForRole } from './components/RequireRole';
 import { TECHNICIANS } from './lib/types';
 import { Card, EmptyState } from './components/ui';
 import AdminOrders from './pages/AdminOrders';
@@ -10,6 +11,8 @@ import ManagerReview from './pages/ManagerReview';
 import Dashboard from './pages/Dashboard';
 import AiQuery from './pages/AiQuery';
 import Activity from './pages/Activity';
+import MyActivity from './pages/MyActivity';
+import { RequireRole } from './components/RequireRole';
 
 function Landing() {
   const { actor, setActor, mode, ready, data } = useApp();
@@ -17,7 +20,7 @@ function Landing() {
 
   const start = (role: 'Admin' | 'Technician' | 'Manager', name: string) => {
     setActor({ role, name });
-    navigate(role === 'Admin' ? '/orders' : role === 'Technician' ? '/jobs' : '/review');
+    navigate(homeForRole(role));
   };
 
   return (
@@ -93,14 +96,24 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Landing />} />
-        <Route path="orders" element={<AdminOrders />} />
-        <Route path="orders/:orderNo" element={<OrderDetail />} />
-        <Route path="jobs" element={<TechJobs />} />
-        <Route path="jobs/:orderNo" element={<TechJobs />} />
-        <Route path="review" element={<ManagerReview />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="ai" element={<AiQuery />} />
-        <Route path="activity" element={<Activity />} />
+
+        {/* Technician: own queue and own history only */}
+        <Route path="jobs" element={<RequireRole roles={['Technician']}><TechJobs /></RequireRole>} />
+        <Route path="jobs/:orderNo" element={<RequireRole roles={['Technician']}><TechJobs /></RequireRole>} />
+        <Route path="my-activity" element={<RequireRole roles={['Technician']}><MyActivity /></RequireRole>} />
+
+        {/* Admin: order intake and assignment */}
+        <Route path="orders" element={<RequireRole roles={['Admin', 'Manager']}><AdminOrders /></RequireRole>} />
+        <Route path="orders/:orderNo" element={<RequireRole roles={['Admin', 'Manager', 'Technician']}><OrderDetail /></RequireRole>} />
+
+        {/* Manager: review queue */}
+        <Route path="review" element={<RequireRole roles={['Manager']}><ManagerReview /></RequireRole>} />
+
+        {/* Management screens — not shown to technicians */}
+        <Route path="dashboard" element={<RequireRole roles={['Admin', 'Manager']}><Dashboard /></RequireRole>} />
+        <Route path="ai" element={<RequireRole roles={['Admin', 'Manager']}><AiQuery /></RequireRole>} />
+        <Route path="activity" element={<RequireRole roles={['Admin', 'Manager']}><Activity /></RequireRole>} />
+
         <Route path="*" element={<NotFound />} />
         <Route path="home" element={<Navigate to="/" replace />} />
       </Route>

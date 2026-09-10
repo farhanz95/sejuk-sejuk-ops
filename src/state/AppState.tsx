@@ -20,6 +20,7 @@ interface AppState {
   data: OpsData;
   actor: Actor;
   setActor: (a: Actor) => void;
+  resetActor: () => void;
   toasts: Toast[];
   toast: (kind: Toast['kind'], text: string) => void;
   dismissToast: (id: string) => void;
@@ -41,6 +42,27 @@ interface AppState {
 
 const EMPTY: OpsData = { orders: [], reports: [], events: [], notifications: [] };
 
+/**
+ * The mock login survives a reload. Without this, refreshing the page silently
+ * signed you back in as Admin — which also meant a technician could reach a
+ * management screen simply by reloading on that URL.
+ */
+const ACTOR_KEY = 'ss_actor_v1';
+const DEFAULT_ACTOR: Actor = { role: 'Admin', name: 'Admin (desk)' };
+
+function readStoredActor(): Actor {
+  try {
+    const raw = localStorage.getItem(ACTOR_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Actor;
+      if (parsed && ['Admin', 'Manager', 'Technician'].includes(parsed.role) && parsed.name) return parsed;
+    }
+  } catch {
+    /* ignore corrupt storage */
+  }
+  return DEFAULT_ACTOR;
+}
+
 const Ctx = createContext<AppState | null>(null);
 
 export const TECHNICIAN_ROLE_NAME = 'Ali';
@@ -51,7 +73,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [actor, setActor] = useState<Actor>({ role: 'Admin', name: 'Admin (desk)' });
+  const [actor, setActor] = useState<Actor>(() => readStoredActor());
 
   const toast = useCallback((kind: Toast['kind'], text: string) => {
     const id = Math.random().toString(36).slice(2);
@@ -82,7 +104,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   /** Role switch also swaps the acting technician, as the brief suggests. */
   const changeActor = useCallback((a: Actor) => {
-    setActor(a.role === 'Technician' ? { role: 'Technician', name: a.name || TECHNICIAN_ROLE_NAME } : a);
+    const next = a.role === 'Technician' ? { role: 'Technician' as const, name: a.name || TECHNICIAN_ROLE_NAME } : a;
+    setActor(next);
+    try {
+      localStorage.setItem(ACTOR_KEY, JSON.stringify(next));
+    } catch {
+      /* private mode — the session simply does not persist */
+    }
+  }, []);
+
+  /** Sign out of the mock login (returns to the role picker). */
+  const resetActor = useCallback(() => {
+    try {
+      localStorage.removeItem(ACTOR_KEY);
+    } catch {
+      /* ignore */
+    }
+    setActor(DEFAULT_ACTOR);
   }, []);
 
   const guard = useCallback(
@@ -110,6 +148,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     data,
     actor,
     setActor: changeActor,
+    resetActor,
     toasts,
     toast,
     dismissToast,

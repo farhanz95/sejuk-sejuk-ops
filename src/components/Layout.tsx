@@ -2,21 +2,38 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useApp, ROLE_OPTIONS } from '../state/AppState';
 import { TECHNICIANS } from '../lib/types';
 import { Toasts } from './ui';
+import { homeForRole } from './RequireRole';
+import type { Role } from '../lib/types';
 
 const ROLE_ICON = { Admin: '🗂️', Technician: '🔧', Manager: '📊' } as const;
 
 export default function Layout() {
-  const { actor, setActor, mode, data, resetDemo } = useApp();
+  const { actor, setActor, resetActor, mode, data, resetDemo } = useApp();
   const navigate = useNavigate();
 
-  const nav = [
-    ...(actor.role === 'Admin' ? [{ to: '/orders', label: 'Orders', icon: '🧾' }] : []),
-    ...(actor.role === 'Technician' ? [{ to: '/jobs', label: 'My Jobs', icon: '🔧' }] : []),
-    ...(actor.role === 'Manager' ? [{ to: '/review', label: 'Review', icon: '✅' }] : []),
-    { to: '/dashboard', label: 'Dashboard', icon: '📈' },
-    { to: '/ai', label: 'AI Query', icon: '🤖' },
-    { to: '/activity', label: 'Activity', icon: '🕘' },
-  ];
+  // Least privilege: a technician works in their own queue and their own
+  // history. Company-wide KPIs, the query assistant and the audit log of
+  // everyone's orders are management screens (Admin/Manager).
+  const nav =
+    actor.role === 'Technician'
+      ? [
+          { to: '/jobs', label: 'My Jobs', icon: '🔧' },
+          { to: '/my-activity', label: 'My Activity', icon: '🕘' },
+        ]
+      : actor.role === 'Manager'
+        ? [
+            { to: '/review', label: 'Review', icon: '✅' },
+            { to: '/orders', label: 'Orders', icon: '🧾' },
+            { to: '/dashboard', label: 'Dashboard', icon: '📈' },
+            { to: '/ai', label: 'AI Query', icon: '🤖' },
+            { to: '/activity', label: 'Activity', icon: '🕘' },
+          ]
+        : [
+            { to: '/orders', label: 'Orders', icon: '🧾' },
+            { to: '/dashboard', label: 'Dashboard', icon: '📈' },
+            { to: '/ai', label: 'AI Query', icon: '🤖' },
+            { to: '/activity', label: 'Activity', icon: '🕘' },
+          ];
 
   return (
     <div className="min-h-full pb-24 md:pb-10">
@@ -51,7 +68,7 @@ export default function Layout() {
               onChange={(e) => {
                 const [role, name] = e.target.value.split(':');
                 setActor({ role: role as typeof actor.role, name });
-                navigate(role === 'Technician' ? '/jobs' : role === 'Manager' ? '/review' : '/orders');
+                navigate(homeForRole(role as Role));
               }}
               title="Mock login — switch role to simulate a user"
             >
@@ -66,6 +83,18 @@ export default function Layout() {
                 </option>
               ))}
             </select>
+
+            <button
+              type="button"
+              className="btn-ghost !px-2 !py-2 text-xs"
+              title="Sign out of the mock login"
+              onClick={() => {
+                resetActor();
+                navigate('/');
+              }}
+            >
+              switch role
+            </button>
 
             {mode === 'demo' ? (
               <button type="button" className="btn-ghost !px-2 !py-2 text-xs" title="Reset the seeded demo dataset" onClick={() => void resetDemo()}>
@@ -97,8 +126,8 @@ export default function Layout() {
 
       {/* Mobile: bottom tab bar — thumb-reachable for technicians in the field. */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        <div className="grid grid-cols-4">
-          {nav.slice(0, 4).map((n) => (
+        <div className={`grid ${nav.length >= 4 ? 'grid-cols-4' : nav.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {nav.slice(0, nav.length >= 4 ? 4 : nav.length).map((n) => (
             <NavLink
               key={n.to}
               to={n.to}

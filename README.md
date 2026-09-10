@@ -34,7 +34,7 @@ Built for the *Programmer Assessment – Operations System + AI Challenge* (9–
 | Brief | Status | Where |
 | --- | --- | --- |
 | **Module 1 — Admin Portal · order submission** | ✅ | `src/pages/AdminOrders.tsx`, `src/pages/OrderDetail.tsx` |
-| **Module 2 — Technician Portal · service job** | ✅ mobile-first | `src/pages/TechJobs.tsx` |
+| **Module 2 — Technician Portal · service job** | ✅ mobile-first, scoped to the signed-in technician | `src/pages/TechJobs.tsx`, `src/pages/MyActivity.tsx` |
 | **Module 3 — WhatsApp notification on Job Done** | ✅ | `src/lib/domain.ts` (`whatsAppMessage`, `waDeepLink`), `src/pages/OrderDetail.tsx`, `src/pages/Activity.tsx` |
 | **Bonus — KPI dashboard** (jobs, total amount, postpone/reschedule) | ✅ week/month/today views, leaderboard, charts | `src/pages/Dashboard.tsx` |
 | **AI Module — operations query window** | ✅ | `src/pages/AiQuery.tsx` + `api/ai-query.ts` |
@@ -147,7 +147,7 @@ rasterised by a real browser engine — no image toolchain to install. It produc
 ### Tests
 
 ```bash
-npm test           # 78 tests: rules, aggregations, AI planner, prompts, API handlers, workflow, UI render, document reading
+npm test           # 89 tests: rules, aggregations, AI, prompts, API handlers, workflow, UI render, documents, role access
 npm run seed:sql   # regenerate supabase/seed.sql from src/lib/seed.ts
 npm run verify:live  # drives the DEPLOYED site in Chrome and screenshots every step into scripts/shots/
 ```
@@ -283,7 +283,21 @@ month?"). The flags are rule-based on purpose: an alert that decides money matte
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,
 Manager). The role switch is real for the workflow: switching to another technician makes their job un-completable
-by you, and switching away from Admin removes the assign action. Server-side policies in
+by you, and switching away from Admin removes the assign action.
+
+**Each role sees only its own screens** — hiding a tab is not the only defence, the routes are guarded too
+(`src/components/RequireRole.tsx`, `ROLE_SCREENS`), so typing `/dashboard` as a technician lands you back on your own
+queue. This came from reviewing the first version, where a technician could read the company's revenue, the
+colleague leaderboard and the audit log of everyone's orders:
+
+| Role | Screens | Can do | Deliberately cannot |
+| --- | --- | --- | --- |
+| **Technician** | My Jobs · My Activity | tap Start job / Complete job on **their own** jobs, record payment, read their own history and the messages sent to their customers | no company revenue, no leaderboard, no AI assistant, no audit log of other people's orders |
+| **Admin** | Orders · Dashboard · AI Query · Activity | create orders (incl. reading them from a document), assign/reassign, reschedule, see operations KPIs | cannot approve or close a job (manager-only) |
+| **Manager** | Review · Orders · Dashboard · AI Query · Activity | approve completed jobs, close them, see full KPIs + AI insight | cannot create orders or assign technicians (admin-only) |
+
+The technician's summary numbers are scoped to them (`MyActivity.tsx`): jobs completed, RM billed, how many had photo
+evidence, their open jobs — computed from the same rows, filtered by technician. Server-side policies in
 `supabase/schema.sql` deliberately allow anon read/write for the demo (with a commented example of the role-checked
 policy you would use with Supabase Auth), and the AI endpoint keeps its key server-side.
 
@@ -333,7 +347,7 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
 
 ## 8. Tests
 
-`npm test` → **78 passing** (`node:test` + `tsx`):
+`npm test` → **89 passing** (`node:test` + `tsx`):
 
 - `tests/domain.test.ts` — order-number generation, quoted+extra maths, the three permission rules (including
   "another technician is refused"), draft/completion validation, the 6-file cap, the payment ceiling, the exact
@@ -347,6 +361,8 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
   `last_week` / `Ali` / `3`, with the period assertions proving "last week" cannot collapse into "this week".
 - `tests/ai-answer-correctness.test.ts` — the currency guard (`$5,885` → `RM 5,885`, `USD`/`MYR` too), plus the
   period-vs-backlog split in the overview (asking "this week" must not answer with all-time totals).
+- `tests/role-access.test.ts` — which screens each role may open (including by typing a URL) and where each role
+  lands after switching: a technician cannot reach `/dashboard`, `/ai`, `/activity`, `/review` or `/orders`.
 - `tests/document-understanding.test.ts` — the reader against a real quotation and a WhatsApp-style message, the
   date formats Malaysian paperwork uses (including the impossible ones being refused), and that `normalizeFields()`
   rejects a non-phone, an unknown service type and the literal "null"; plus the endpoint handler itself.
