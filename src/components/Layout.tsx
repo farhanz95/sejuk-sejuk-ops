@@ -1,0 +1,119 @@
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useApp, ROLE_OPTIONS } from '../state/AppState';
+import { TECHNICIANS } from '../lib/types';
+import { Toasts } from './ui';
+
+const ROLE_ICON = { Admin: '🗂️', Technician: '🔧', Manager: '📊' } as const;
+
+export default function Layout() {
+  const { actor, setActor, mode, data, resetDemo } = useApp();
+  const navigate = useNavigate();
+
+  const nav = [
+    ...(actor.role === 'Admin' ? [{ to: '/orders', label: 'Orders', icon: '🧾' }] : []),
+    ...(actor.role === 'Technician' ? [{ to: '/jobs', label: 'My Jobs', icon: '🔧' }] : []),
+    ...(actor.role === 'Manager' ? [{ to: '/review', label: 'Review', icon: '✅' }] : []),
+    { to: '/dashboard', label: 'Dashboard', icon: '📈' },
+    { to: '/ai', label: 'AI Query', icon: '🤖' },
+    { to: '/activity', label: 'Activity', icon: '🕘' },
+  ];
+
+  return (
+    <div className="min-h-full pb-24 md:pb-10">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 text-left"
+            title="Sejuk Sejuk Service"
+          >
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-lg text-white shadow-sm">❄️</span>
+            <span>
+              <span className="block text-sm font-bold leading-tight text-slate-800">Sejuk Sejuk Service</span>
+              <span className="block text-[11px] leading-tight text-slate-500">Operations Portal</span>
+            </span>
+          </button>
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {mode === 'demo' ? (
+              <span className="chip border border-amber-200 bg-amber-50 text-amber-700" title="No Supabase env vars found — running on the seeded localStorage dataset.">
+                demo data
+              </span>
+            ) : (
+              <span className="chip border border-emerald-200 bg-emerald-50 text-emerald-700">supabase</span>
+            )}
+            <span className="hidden text-xs text-slate-500 sm:inline">{data.orders.length} orders</span>
+
+            <select
+              className="input !w-auto !py-2"
+              value={`${actor.role}:${actor.name}`}
+              onChange={(e) => {
+                const [role, name] = e.target.value.split(':');
+                setActor({ role: role as typeof actor.role, name });
+                navigate(role === 'Technician' ? '/jobs' : role === 'Manager' ? '/review' : '/orders');
+              }}
+              title="Mock login — switch role to simulate a user"
+            >
+              {ROLE_OPTIONS.filter((r) => r.role !== 'Technician').map((r) => (
+                <option key={r.role} value={`${r.role}:${r.label}`}>
+                  {ROLE_ICON[r.role]} {r.label}
+                </option>
+              ))}
+              {TECHNICIANS.map((t) => (
+                <option key={t} value={`Technician:${t}`}>
+                  🔧 Technician — {t}
+                </option>
+              ))}
+            </select>
+
+            {mode === 'demo' ? (
+              <button type="button" className="btn-ghost !px-2 !py-2 text-xs" title="Reset the seeded demo dataset" onClick={() => void resetDemo()}>
+                reset
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <nav className="mx-auto hidden max-w-6xl gap-1 px-4 pb-2 md:flex">
+          {nav.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              className={({ isActive }) =>
+                `rounded-lg px-3 py-2 text-sm font-semibold transition ${isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'}`
+              }
+            >
+              <span className="mr-1">{n.icon}</span>
+              {n.label}
+            </NavLink>
+          ))}
+        </nav>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-4 py-5">
+        <Outlet />
+      </main>
+
+      {/* Mobile: bottom tab bar — thumb-reachable for technicians in the field. */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <div className="grid grid-cols-4">
+          {nav.slice(0, 4).map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              className={({ isActive }) =>
+                `flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold ${isActive ? 'text-brand-700' : 'text-slate-500'}`
+              }
+            >
+              <span className="text-lg leading-none">{n.icon}</span>
+              {n.label}
+            </NavLink>
+          ))}
+        </div>
+      </nav>
+
+      <Toasts />
+    </div>
+  );
+}

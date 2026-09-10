@@ -1,0 +1,31 @@
+{
+  "name": "sejuk-sejuk-ops",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Sejuk Sejuk Service — internal operations system (orders → assignment → field completion → manager review), with an AI operations query window. Built for the Programmer Assessment.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "seed:sql": "tsx scripts/generate-seed-sql.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8"
+  }
+}

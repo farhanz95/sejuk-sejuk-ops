@@ -1,0 +1,88 @@
+@import 'tailwindcss';
+
+/* Sejuk Sejuk Service — cool blue/teal palette, tuned for both desktop admin
+   work and one-handed field use on a phone. */
+@theme {
+  --color-brand-50: #eef7fb;
+  --color-brand-100: #d6ecf5;
+  --color-brand-200: #b0d9ea;
+  --color-brand-300: #7cbedb;
+  --color-brand-400: #459cc4;
+  --color-brand-500: #257ea9;
+  --color-brand-600: #1c6489;
+  --color-brand-700: #1a5170;
+  --color-brand-800: #1a445d;
+  --color-brand-900: #193a4f;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-100 text-slate-800 antialiased;
+}
+
+/* Field use: comfortable touch targets, no accidental zoom on inputs. */
+input,
+select,
+textarea,
+button {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 14px;
+  }
+}
+
+.card {
+  @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+}
+
+.label {
+  @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500;
+}
+
+.input {
+  @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-800 outline-none transition
+         focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400;
+}
+
+/* Tailwind 4 cannot `@apply` a custom class, so the button base is repeated
+   across the variants instead of being layered on top of `.btn`. */
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+         disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-primary {
+  @apply bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:scale-[.99];
+}
+
+.btn-secondary {
+  @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+}
+
+.btn-ghost {
+  @apply text-slate-600 hover:bg-slate-100;
+}
+
+.btn-danger {
+  @apply bg-rose-600 text-white hover:bg-rose-700;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium;
+}
