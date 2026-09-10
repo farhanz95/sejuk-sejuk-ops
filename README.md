@@ -39,7 +39,8 @@ Built for the *Programmer Assessment – Operations System + AI Challenge* (9–
 | **Bonus — KPI dashboard** (jobs, total amount, postpone/reschedule) | ✅ week/month/today views, leaderboard, charts | `src/pages/Dashboard.tsx` |
 | **AI Module — operations query window** | ✅ | `src/pages/AiQuery.tsx` + `api/ai-query.ts` |
 | **Advanced AI — workflow supervisor** (amount ≫ quote, job done with no photos) | ✅ | `src/lib/domain.ts` (`supervisorFlags`), surfaced on the dashboard + review queue |
-| Advanced AI — document understanding, operational insight | ⛔ not implemented | explained in §7 |
+| **Advanced AI — document understanding** | ✅ | `src/components/DocumentImport.tsx`, `server/extract-document.ts`, `src/lib/doc-fields.ts` |
+| **Advanced AI — operational insight** | ✅ | `technician_workload` in the query catalog + the dashboard's "Analyse this period" card |
 | **Self-assessment README** | ✅ | §9 below |
 
 Workflow implemented exactly as specified: `New → Assigned → In Progress → Job Done → Reviewed → Closed`, with
@@ -146,7 +147,7 @@ rasterised by a real browser engine — no image toolchain to install. It produc
 ### Tests
 
 ```bash
-npm test           # 68 tests: rules, aggregations, AI planner, prompts, API handler, workflow, UI render
+npm test           # 78 tests: rules, aggregations, AI planner, prompts, API handlers, workflow, UI render, document reading
 npm run seed:sql   # regenerate supabase/seed.sql from src/lib/seed.ts
 npm run verify:live  # drives the DEPLOYED site in Chrome and screenshots every step into scripts/shots/
 ```
@@ -257,6 +258,20 @@ completed today, billed vs collected vs outstanding (period), jobs open longer t
 alerts, general operations overview. Periods: today / this week / last week / last 7 days / this month / last
 month / all time.
 
+**Advanced challenge — AI Operational Insight:** the `technician_workload` query ranks each technician against the
+team average for a period and labels who is `overloaded` (≥40% above average, plus at least one extra job), `busy`,
+`normal` or `idle`, with a ready-made sentence. It answers "Which technician might be overloaded this week?" in the AI
+window, and the dashboard has an **✨ Analyse this period** button that asks it directly — the same catalog, so the
+names and counts match the leaderboard right above it.
+
+**Advanced challenge — AI Document Understanding:** admin opens **New order → 📄 Pull fields from a document**, drops
+in a quotation/invoice/work order (PDF text is extracted *in the browser* with pdfjs, so the file never leaves the
+machine) or pastes the customer's WhatsApp message, and `/api/extract-document` returns customer, phone, address,
+service type, problem, quoted price, date and notes. The model may only produce that JSON shape, and every value is
+then validated by `normalizeFields()` — an unknown service type, a non-phone number, the literal string "null" or an
+impossible date (31 Feb) all become *missing fields* rather than a wrong order, and the admin reviews the table before
+applying it.
+
 **Advanced challenge — AI Workflow Supervisor:** implemented as explainable rules (`supervisorFlags`) that flag
 `final_amount ≥ 1.5 × quoted_price` and "job done with no photo/video/PDF evidence", surfaced on the dashboard and
 in the manager review queue, and answerable through the `supervisor_alerts` query ("Any suspicious jobs this
@@ -305,9 +320,12 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
   validate MIME types and sizes server-side (Supabase Storage policies).
 - **The AI query endpoint is unauthenticated** (mock login can't be trusted server-side): it is read-only and
   rate-limitable, but a real deployment would verify a Supabase JWT before answering.
-- **Advanced AI challenges beyond the workflow supervisor are not implemented:** document understanding
-  (extracting customer/service/amount/date from an uploaded PDF) and operational insight commentary would be the
-  natural next additions to the catalog.
+- **Document reading is text-only.** A photographed or scanned document cannot be read: the configured free-tier
+  provider has no vision model, and the app says so in the dialog rather than failing silently. PDFs (text layer),
+  `.txt`/`.md` and pasted text work; a scanned PDF needs OCR first.
+- **The document reader is a first pass, not an authority.** It fills the form; a human still presses Create order.
+  Ambiguous paperwork (multiple amounts, two addresses) can pick the wrong one — the `missing` list and the
+  per-field table exist so that is visible before saving.
 - **No offline queue for field use.** Technicians in a dead zone lose an in-progress form; a production build
   would add a service worker + background sync.
 
@@ -315,7 +333,7 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
 
 ## 8. Tests
 
-`npm test` → **68 passing** (`node:test` + `tsx`):
+`npm test` → **78 passing** (`node:test` + `tsx`):
 
 - `tests/domain.test.ts` — order-number generation, quoted+extra maths, the three permission rules (including
   "another technician is refused"), draft/completion validation, the 6-file cap, the payment ceiling, the exact
@@ -329,6 +347,9 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
   `last_week` / `Ali` / `3`, with the period assertions proving "last week" cannot collapse into "this week".
 - `tests/ai-answer-correctness.test.ts` — the currency guard (`$5,885` → `RM 5,885`, `USD`/`MYR` too), plus the
   period-vs-backlog split in the overview (asking "this week" must not answer with all-time totals).
+- `tests/document-understanding.test.ts` — the reader against a real quotation and a WhatsApp-style message, the
+  date formats Malaysian paperwork uses (including the impossible ones being refused), and that `normalizeFields()`
+  rejects a non-phone, an unknown service type and the literal "null"; plus the endpoint handler itself.
 - `tests/ai-prompts.test.ts` — the prompt instructions that exist *because* a real model response was wrong are
   pinned as code: no JSON echo, RM-only currency, rows-only grounding, answer in the asker's language.
 - `tests/api-handler.test.ts` — the **real serverless handler** with mock req/res: 400s, 405, snapshot mode,

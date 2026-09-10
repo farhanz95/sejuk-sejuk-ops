@@ -7,6 +7,10 @@
     "api/ai-query.js": {
       "maxDuration": 30,
       "memory": 1024
+    },
+    "api/extract-document.js": {
+      "maxDuration": 30,
+      "memory": 1024
     }
   },
   "rewrites": [

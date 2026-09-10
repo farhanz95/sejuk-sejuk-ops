@@ -1,61 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../state/AppState';
-import { QUERY_CATALOG, findQuery } from '../lib/analytics';
-import { describeEndpointFailure, heuristicAnswer, matchIntent } from '../lib/ai-fallback';
-import type { OpsData } from '../lib/types';
+import { QUERY_CATALOG } from '../lib/analytics';
+import { SUGGESTED_QUESTIONS, askAi, answerInBrowser, type AiResponse } from '../lib/ask-ai';
 import { Card, EmptyState, SectionTitle } from '../components/ui';
 
-interface AiResponse {
-  answer?: string;
-  query_used?: string;
-  args_used?: Record<string, unknown>;
-  planner?: 'llm' | 'heuristic';
-  phrasing?: 'llm' | 'template';
-  data_source?: string;
-  rows?: unknown;
-  error?: string;
-}
-
-const SUGGESTIONS = [
-  'What jobs did technician Ali complete last week?',
-  'Which technician completed the most jobs this week?',
-  'How many jobs were completed today?',
-  'How much did we bill this week and what is still outstanding?',
-  'Which jobs have been open for more than 3 days?',
-  'Any suspicious jobs this month?',
-  'Berapa banyak job siap minggu ini?',
-];
-
-
-/**
- * Last-resort answer path: the same controlled queries, run in the browser.
- * Used when /api/ai-query is unavailable (static hosting, offline). Answers are
- * labelled `source: browser` so a reviewer can tell where they came from.
- */
-function answerInBrowser(question: string, data: OpsData, note?: string): AiResponse {
-  const choice = matchIntent(question);
-  const query = findQuery(choice.name) ?? findQuery('business_overview')!;
-  let rows: unknown;
-  try {
-    rows = query.run(data, choice.args, new Date());
-  } catch (err) {
-    rows = { error: err instanceof Error ? err.message : String(err) };
-  }
-  // Never surface a raw technical error (e.g. "Unexpected token '<'") to a
-  // manager — classify it into a sentence instead.
-  const because = describeEndpointFailure(note);
-  return {
-    answer:
-      heuristicAnswer(question, query.name, rows) +
-      (note ? `\n\n_Answered in the browser from the same controlled query (${because}), so the figures are identical to the server path._` : ''),
-    query_used: query.name,
-    args_used: choice.args,
-    planner: 'heuristic',
-    phrasing: 'template',
-    data_source: 'browser',
-    rows,
-  };
-}
 
 export default function AiQuery() {
   const { data, mode, actor } = useApp();
@@ -85,31 +33,11 @@ export default function AiQuery() {
       return;
     }
 
-    try {
-      const res = await fetch('/api/ai-query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // In demo mode the seeded dataset is sent along because there is no
-        // server-side database; with Supabase configured the API reads it itself.
-        body: JSON.stringify(mode === 'demo' ? { question: text, snapshot: data } : { question: text }),
-      });
-      const json = (await res.json()) as AiResponse;
-      if (!res.ok || json.error) {
-        // The endpoint answered with an error — answer from the same controlled
-        // catalog in the browser instead of showing the user a dead end.
-        setEndpointDown(json.error ?? `HTTP ${res.status}`);
-        setResponse(answerInBrowser(text, data, json.error));
-      } else {
-        setResponse(json);
-      }
-      setAsked((prev) => [text, ...prev.filter((x) => x !== text)].slice(0, 6));
-    } catch (err) {
-      const note = err instanceof Error ? err.message : String(err);
-      setEndpointDown(note);
-      setResponse(answerInBrowser(text, data, note));
-    } finally {
-      setBusy(false);
-    }
+    const { response: result, endpointDown: down } = await askAi(text, data, mode);
+    if (down) setEndpointDown(down);
+    setResponse(result);
+    setAsked((prev) => [text, ...prev.filter((x) => x !== text)].slice(0, 6));
+    setBusy(false);
   };
 
   return (
@@ -148,7 +76,7 @@ export default function AiQuery() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((s) => (
+          {SUGGESTED_QUESTIONS.map((s) => (
             <button
               key={s}
               className="chip border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"

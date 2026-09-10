@@ -4,6 +4,8 @@ import { useApp } from '../state/AppState';
 import { SERVICE_TYPES, TECHNICIANS, type OrderStatus, type ServiceType, type Technician } from '../lib/types';
 import { money, nextOrderNo, validateOrderDraft, type OrderDraft } from '../lib/domain';
 import { Card, EmptyState, Field, MoneyText, SectionTitle, StatusPill, TimeText, Modal } from '../components/ui';
+import DocumentImport from '../components/DocumentImport';
+import type { ExtractedFields } from '../lib/doc-fields';
 
 const STATUSES: OrderStatus[] = ['New', 'Assigned', 'In Progress', 'Job Done', 'Reviewed', 'Closed'];
 
@@ -29,6 +31,7 @@ export default function AdminOrders() {
   const [assigning, setAssigning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const isAdmin = actor.role === 'Admin';
   const previewNo = useMemo(() => nextOrderNo(data.orders.map((o) => o.order_no), new Date().getFullYear()), [data.orders]);
@@ -194,6 +197,16 @@ export default function AdminOrders() {
           </div>
         ) : (
           <>
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 p-3">
+              <div className="flex-1 text-xs text-brand-900">
+                <strong>Got the paperwork already?</strong> Read a quotation, invoice or the customer's WhatsApp message and
+                fill this form from it.
+              </div>
+              <button className="btn-secondary !py-1.5 text-xs" onClick={() => setImporting(true)}>
+                📄 Pull fields from a document
+              </button>
+            </div>
+
             {errors.length ? (
               <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                 <ul className="list-inside list-disc space-y-0.5">
@@ -269,6 +282,23 @@ export default function AdminOrders() {
           </>
         )}
       </Modal>
+
+      <DocumentImport
+        open={importing}
+        onClose={() => setImporting(false)}
+        onApply={(fields: ExtractedFields) =>
+          setDraft((prev) => ({
+            ...prev,
+            customer_name: fields.customer_name ?? prev.customer_name,
+            phone: fields.phone ?? prev.phone,
+            address: fields.address ?? prev.address,
+            problem_description: fields.problem_description ?? prev.problem_description,
+            service_type: fields.service_type ?? prev.service_type,
+            quoted_price: fields.quoted_price !== null ? String(fields.quoted_price) : prev.quoted_price,
+            admin_notes: fields.admin_notes ?? prev.admin_notes,
+          }))
+        }
+      />
 
       <Modal open={!!assigning} title={`Assign ${assigning ?? ''}`} onClose={() => setAssigning(null)}>
         <SectionTitle>Field teams</SectionTitle>

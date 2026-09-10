@@ -320,6 +320,55 @@ export const QUERY_CATALOG: QueryDef[] = [
     },
   },
   {
+    name: 'technician_workload',
+    description:
+      'Workload balance across technicians for a period: jobs each one completed, how far above or below the team average they are, and who looks overloaded or idle. Use this for capacity questions ("who is overloaded?", "is the team balanced?").',
+    params: [{ name: 'range', type: 'string', required: false, description: 'period preset (default this_week)' }],
+    examples: [
+      'Which technician might be overloaded this week?',
+      'Is the workload balanced across the team?',
+    ],
+    run: (data, args, now = new Date()) => {
+      const range = rangeFromArgs(args, now);
+      const board = technicianLeaderboard(data, range);
+      const active = board.filter((b) => b.jobs_completed > 0);
+      const average = active.length ? round2(active.reduce((s, b) => s + b.jobs_completed, 0) / active.length) : 0;
+      // "significantly higher" = at least 40% above the team average, and at
+      // least one extra job (so a 1-vs-2 comparison does not read as overload).
+      const threshold = round2(average * 1.4);
+      const rows = board.map((b) => ({
+        technician: b.technician,
+        jobs_completed: b.jobs_completed,
+        total_amount: b.total_amount,
+        reschedules: b.reschedules,
+        vs_average: average ? round2(b.jobs_completed / average) : 0,
+        status:
+          b.jobs_completed === 0
+            ? 'idle'
+            : b.jobs_completed >= threshold && b.jobs_completed > average
+              ? 'overloaded'
+              : b.jobs_completed > average
+                ? 'busy'
+                : 'normal',
+      }));
+      const overloaded = rows.filter((r) => r.status === 'overloaded');
+      const idle = rows.filter((r) => r.status === 'idle');
+      return {
+        period: rangeLabel(range),
+        team_average_jobs: average,
+        overloaded_threshold_jobs: threshold,
+        overloaded: overloaded.map((r) => r.technician),
+        idle: idle.map((r) => r.technician),
+        workload: rows,
+        summary: overloaded.length
+          ? `${overloaded.map((r) => r.technician).join(', ')} ${overloaded.length === 1 ? 'is' : 'are'} at least 40% above the team average of ${average} job(s) in ${rangeLabel(range)}.`
+          : active.length
+            ? `The workload is balanced: no technician is more than 40% above the team average of ${average} job(s) in ${rangeLabel(range)}.`
+            : `No jobs were completed in ${rangeLabel(range)}.`,
+      };
+    },
+  },
+  {
     name: 'business_overview',
     description: 'Overall snapshot: order counts by status, revenue, technician leaderboard, stalled jobs and supervisor alerts. Use this for general "how are we doing" questions.',
     params: [{ name: 'range', type: 'string', required: false, description: 'period preset (default this_week)' }],

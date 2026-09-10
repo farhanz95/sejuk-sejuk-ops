@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppState';
 import { Card, EmptyState, MoneyText, SectionTitle, StatCard, StatusPill, TimeText } from '../components/ui';
 import { dayRange, endOfWeek, jobsCompletedOn, reportsInRange, revenueSummary, stalledJobs, startOfWeek, supervisorAlerts, technicianLeaderboard, type Range } from '../lib/analytics';
+import { askAi, type AiResponse } from '../lib/ask-ai';
 
 type Preset = 'today' | 'this_week' | 'last_week' | 'this_month';
 
@@ -12,6 +13,10 @@ const PRESETS: { key: Preset; label: string }[] = [
   { key: 'last_week', label: 'Last week' },
   { key: 'this_month', label: 'This month' },
 ];
+
+function periodPhrase(preset: Preset): string {
+  return { today: 'today', this_week: 'this week', last_week: 'last week', this_month: 'this month' }[preset];
+}
 
 function rangeFor(preset: Preset): Range {
   const now = new Date();
@@ -25,9 +30,11 @@ function rangeFor(preset: Preset): Range {
 }
 
 export default function Dashboard() {
-  const { data } = useApp();
+  const { data, mode } = useApp();
   const navigate = useNavigate();
   const [preset, setPreset] = useState<Preset>('this_week');
+  const [insight, setInsight] = useState<AiResponse | null>(null);
+  const [insightBusy, setInsightBusy] = useState(false);
 
   const range = useMemo(() => rangeFor(preset), [preset]);
   const board = useMemo(() => technicianLeaderboard(data, range), [data, range]);
@@ -159,6 +166,46 @@ export default function Dashboard() {
           </p>
         </Card>
       </div>
+
+      <Card className="border-brand-200 bg-brand-50/60 p-5">
+        <SectionTitle
+          right={
+            <button
+              className="btn-primary !py-1.5 text-xs"
+              disabled={insightBusy}
+              onClick={async () => {
+                setInsightBusy(true);
+                const { response } = await askAi(
+                  `Which technician might be overloaded in ${periodPhrase(preset)}, and what should the manager watch?`,
+                  data,
+                  mode,
+                );
+                setInsight(response);
+                setInsightBusy(false);
+              }}
+            >
+              {insightBusy ? 'Analysing…' : '✨ Analyse this period'}
+            </button>
+          }
+        >
+          AI operational insight
+        </SectionTitle>
+        {insight ? (
+          <>
+            <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-slate-800">{insight.answer}</p>
+            <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
+              <span className="chip bg-white text-slate-600">query: {insight.query_used}</span>
+              <span className="chip bg-white text-slate-600">planner: {insight.planner}</span>
+              <span className="chip bg-white text-slate-600">data: {insight.data_source}</span>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-slate-600">
+            Ask the assistant to read the period's workload and call out who is stretched thin — it answers from the same
+            controlled queries as the AI window (never raw SQL), so the names and counts match the leaderboard above.
+          </p>
+        )}
+      </Card>
 
       <Card className="p-5">
         <SectionTitle>Recent completions</SectionTitle>

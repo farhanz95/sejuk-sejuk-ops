@@ -12,9 +12,15 @@
  */
 import { build } from 'esbuild';
 
+const entries = [
+  ['server/ai-query.ts', 'api/ai-query.js'],
+  ['server/extract-document.ts', 'api/extract-document.js'],
+];
+
+for (const [entry, outfile] of entries) {
 const result = await build({
-  entryPoints: ['server/ai-query.ts'],
-  outfile: 'api/ai-query.js',
+  entryPoints: [entry],
+  outfile,
   bundle: true,
   platform: 'node',
   target: 'node22',
@@ -32,7 +38,8 @@ const result = await build({
 });
 
 if (result.errors.length) {
-  console.error('bundle failed');
+  console.error(`bundle failed: ${entry}`);
   process.exit(1);
 }
-console.log('api/ai-query.js bundled from server/ai-query.ts');
+console.log(`${outfile} bundled from ${entry}`);
+}

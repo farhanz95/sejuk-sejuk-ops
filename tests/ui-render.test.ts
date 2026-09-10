@@ -99,6 +99,18 @@ test('the New order dialog opens with the auto-generated order number', async ()
   assert.match(body, /SS-\d{4}-\d{4}/);
 });
 
+test('the New order dialog offers document reading', async () => {
+  await mount('/orders');
+  await clickText('+ New order');
+  assert.match(text(), /Got the paperwork already\?/, 'the shortcut is offered in the dialog');
+  await clickText('Pull fields from a document');
+  const body = text();
+  assert.match(body, /Pull fields from a document/);
+  assert.match(body, /Read document/);
+  assert.match(body, /or paste the text/);
+  assert.match(body, /only the text is sent for reading/, 'it says what leaves the browser');
+});
+
 test('the technician view lists only that technician\'s jobs', async () => {
   await mount('/jobs');
   await act(async () => {

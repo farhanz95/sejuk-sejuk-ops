@@ -77,6 +77,9 @@ export function matchIntent(question: string): QueryChoice {
   if (/(revenue|billed|billing|collected|outstanding|unpaid|berapakah.*(duit|hasil)|sales)/.test(q)) {
     return { name: 'revenue_summary', args: { range: detectRange(q) } };
   }
+  if (/(overload|overloaded|too many jobs|capacity|workload|balanced|beban|terlalu banyak job)/.test(q)) {
+    return { name: 'technician_workload', args: { range: detectRange(q) } };
+  }
   if (/(stuck|stalled|overdue|open for|belum siap|tertunggak|late)/.test(q)) {
     const m = q.match(/(\d+)\s*(day|hari)/);
     return { name: 'stalled_jobs', args: { older_than_days: m ? Number(m[1]) : 3 } };
@@ -127,6 +130,14 @@ export function heuristicAnswer(question: string, queryName: string, data: unkno
       const jobs = (d.jobs as Json[]) ?? [];
       if (!jobs.length) return `No open jobs older than ${d.older_than_days} day(s).`;
       return `${jobs.length} job(s) have been open longer than ${d.older_than_days} day(s):\n${jobs.map((j) => `• ${j.order_no} — ${j.status}, ${j.technician}, ${j.days_open} days`).join('\n')}`;
+    }
+    case 'technician_workload': {
+      const rows = (d.workload as Json[]) ?? [];
+      if (!rows.length) return `No jobs were completed in ${label(d)}.`;
+      const lines = rows.map(
+        (r) => `• ${r.technician}: ${r.jobs_completed} jobs${Number(r.vs_average) ? ` (${Number(r.vs_average).toFixed(1)}× the team average)` : ''}`,
+      );
+      return `${d.summary}\n${lines.join('\n')}`;
     }
     case 'supervisor_alerts': {
       const alerts = (d.alerts as Json[]) ?? [];
