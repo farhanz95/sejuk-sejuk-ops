@@ -1,0 +1,14 @@
+{
+  "name": "Sejuk Sejuk Service — Operations Portal",
+  "short_name": "Sejuk Sejuk",
+  "description": "Air-conditioner service operations: order intake, technician field jobs, WhatsApp notifications, KPI dashboard and an AI operations query window.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#1c6489",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

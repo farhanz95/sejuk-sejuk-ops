@@ -13,7 +13,8 @@
     "seed:sql": "tsx scripts/generate-seed-sql.ts",
     "verify:live": "node scripts/verify-live.mjs",
     "build:api": "node scripts/build-api.mjs",
-    "dev:api": "node scripts/build-api.mjs --watch"
+    "dev:api": "node scripts/build-api.mjs --watch",
+    "brand": "node scripts/build-brand-assets.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

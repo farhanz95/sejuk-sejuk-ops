@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sejuk Sejuk Service">
+  <defs>
+    <linearGradient id="sbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b93c4"/>
+      <stop offset="1" stop-color="#16455f"/>
+    </linearGradient>
+  </defs>
+  <!--
+    Simplified mark for 16/32px: one bold six-point star (three crossing bars),
+    no barbs, no air-flow arcs, and a heavier stroke. The detailed logo.svg
+    turns to mush at 16px — these few shapes survive the downscale.
+  -->
+  <rect x="0" y="0" width="512" height="512" rx="104" fill="url(#sbg)"/>
+  <g stroke="#ffffff" stroke-width="56" stroke-linecap="round" transform="translate(256 256)">
+    <line x1="0" y1="-158" x2="0" y2="158"/>
+    <line x1="-137" y1="-79" x2="137" y2="79"/>
+    <line x1="-137" y1="79" x2="137" y2="-79"/>
+  </g>
+</svg>
