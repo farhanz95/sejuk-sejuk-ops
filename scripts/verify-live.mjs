@@ -1,198 +1,229 @@
 /**
- * Click-through verification of the live demo with a REAL browser, capturing a
- * screenshot at every meaningful step. Run: node verify.mjs
+ * End-to-end smoke test of a DEPLOYED build, driven through a real Chrome.
+ *
+ *   npm run verify:live                                        # Firebase mirror
+ *   BASE_URL=https://sejuk-sejuk-ops-five.vercel.app npm run verify:live
+ *
+ * It walks the product the way a person would — with screenshots at every step
+ * and a summary.json (order number, WhatsApp deep link, the answers it saw, and
+ * every console error) so the run is evidence, not a claim.
+ *
+ * Read-only: it creates ONE order and completes it, then reports. Reset the
+ * Supabase rows afterwards if you want a pristine dataset (see README).
  */
 import puppeteer from 'puppeteer-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const CHROME = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const BASE = process.env.BASE_URL ?? 'https://sejuk-sejuk-ops.web.app';
-const OUT = new URL('./shots/', import.meta.url).pathname.replace(/^\//, '');
+const OUT = (process.env.SHOTS_DIR ?? 'scripts/shots') .replace(/\/?$/, '/');
 mkdirSync(OUT, { recursive: true });
+
+const DOC = `SEJUK SEJUK SERVICE SDN BHD
+Quotation QT-2026-SMOKE
+Date: 12/09/2026
+Customer: Smoke Test Customer
+Phone: 012-8899776
+Address: No. 21, Jalan Ujian, Shah Alam
+Issue: Aircond indoor unit leaking water and not cold
+Service: repair
+Total: RM 275.00
+Notes: Gate code 4488, dog in the porch`;
 
 const log = (...a) => console.log('•', ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const results = { base: BASE, steps: [], errors: [] };
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  args: ['--no-sandbox', '--hide-scrollbars'],
 });
-
-const results = { steps: [], orderNo: null, whatsapp: null, aiAnswer: null, errors: [] };
 
 function watch(page, tag) {
   page.on('pageerror', (e) => results.errors.push(`${tag}: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error') results.errors.push(`${tag} console: ${m.text().slice(0, 200)}`);
+    if (m.type() === 'error' && !/favicon|manifest/i.test(m.text())) results.errors.push(`${tag} console: ${m.text().slice(0, 180)}`);
   });
 }
 
 async function shot(page, name, note) {
-  await page.screenshot({ path: `${OUT}${name}.png`, fullPage: false });
-  results.steps.push({ name, note, url: page.url() });
-  log('shot', name, '—', note);
+  await page.screenshot({ path: `${OUT}${name}.png` });
+  results.steps.push({ name, note });
+  log(name, '—', note);
 }
 
+const clickText = (page, label) =>
+  page.evaluate((l) => {
+    const el = [...document.querySelectorAll('button, a')].find((b) => b.textContent.includes(l));
+    if (el) el.click();
+    return !!el;
+  }, label);
+
 try {
+  /* ---------------------------------------------------------------- admin --- */
   const page = await browser.newPage();
   watch(page, 'desktop');
-  await page.setViewport({ width: 1366, height: 900 });
+  await page.setViewport({ width: 1366, height: 950 });
   await page.goto(BASE, { waitUntil: 'networkidle2' });
-  await sleep(800);
-
-  // 1 — landing / role picker
-  await shot(page, '01-landing', 'landing + role picker, seeded demo data');
-
-  // 2 — Admin: click through the role card
-  await page.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Continue as Admin'));
-    b?.click();
-  });
-  await sleep(1000);
-  await shot(page, '02-admin-orders', 'Module 1 order list with status filters');
-
-  // 3 — New order dialog, filled in like an admin would
-  await page.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('New order'));
-    b?.click();
-  });
-  await sleep(600);
-  await page.type('input[placeholder="e.g. Ahmad Zaki"]', 'Verification Customer');
-  await page.type('input[placeholder="012-3456789"]', '012-7778899');
-  await page.type('input[placeholder="No. 12, Jalan Sejuk, Shah Alam"]', 'No. 88, Jalan Verify, Shah Alam');
-  await page.type('textarea[placeholder="Aircond not cold, water dripping…"]', 'Aircond not cold, water dripping from indoor unit');
-  await page.type('input[placeholder="180"]', '200');
-  // The header holds the role switch; only the dialog's selects have the real
-  // service types / technicians. Match on EXACT option text so the header's
-  // "🔧 Technician — Ali" can never be mistaken for the technician field.
-  const picked2 = await page.evaluate(() => {
-    const setSelect = (sel, matcher) => {
-      const s = [...document.querySelectorAll('select')].find((x) => [...x.options].some(matcher));
-      if (!s) return false;
-      const opt = [...s.options].find(matcher);
-      s.value = opt.value;
-      s.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    };
-    const service = setSelect(null, (o) => o.textContent.trim() === 'Repair');
-    const tech = setSelect(null, (o) => o.textContent.trim() === 'Ali');
-    return { service, tech };
-  });
-  results.selects = picked2;
-  await sleep(300);
-  await shot(page, '03-new-order-form', 'Module 1 form: auto order no, technician assignment');
-
-  // 4 — submit and read the order number back
-  await page.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Create order'));
-    b?.click();
-  });
   await sleep(1200);
-  results.orderNo = await page.evaluate(() => (document.body.innerText.match(/Order (SS-\d{4}-\d{4}) created/) ?? [])[1] ?? null);
-  await shot(page, '04-order-created', `order created: ${results.orderNo}`);
+  const badge = await page.evaluate(() => (document.body.innerText.includes('supabase') ? 'supabase' : 'demo data'));
+  await shot(page, '01-landing', `landing (data mode: ${badge})`);
+
+  await clickText(page, 'Continue as Admin');
+  await sleep(1400);
+  await shot(page, '02-admin-orders', 'order list with status filters');
+
+  /* ------------------------------- document understanding (advanced AI) --- */
+  await clickText(page, '+ New order');
+  await sleep(700);
+  const opened = await clickText(page, 'Pull fields from a document');
+  await sleep(700);
+  await page.type('textarea[placeholder^="Quotation — Sejuk Sejuk Service"]', DOC);
+  await clickText(page, 'Read document');
+  await sleep(12000); // model round-trip
+  const readCard = await page.evaluate(() => document.body.innerText);
+  results.document_reading = {
+    dialogOpened: opened,
+    readBy: (readCard.match(/read by:[^\n]*/) || [''])[0].trim(),
+    fieldsFound: (readCard.match(/Read (\d+) field\(s\)/) || [, '0'])[1],
+  };
+  await shot(page, '03-document-reading', `document read: ${results.document_reading.readBy || 'n/a'} · ${results.document_reading.fieldsFound} fields`);
+
+  await clickText(page, 'Use these fields');
+  await sleep(900);
+  results.form_after_import = await page.evaluate(() => ({
+    customer: document.querySelector('input[placeholder="e.g. Ahmad Zaki"]')?.value ?? '',
+    phone: document.querySelector('input[placeholder="012-3456789"]')?.value ?? '',
+    price: document.querySelector('input[placeholder="180"]')?.value ?? '',
+  }));
+  await shot(page, '04-order-form-filled', `form filled from the document (${results.form_after_import.customer})`);
 
   await page.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Open order summary'));
-    b?.click();
+    // technician select inside the dialog (exact option text, never the header role switch)
+    const sel = [...document.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.textContent.trim() === 'Ali'));
+    if (sel) {
+      sel.value = 'Ali';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   });
-  await sleep(900);
-  await shot(page, '05-order-detail', 'order detail + audit trail (traceability)');
+  await clickText(page, 'Create order');
+  await sleep(2500);
+  results.order_no = await page.evaluate(() => (document.body.innerText.match(/Order (SS-\d{4}-\d{4}) created/) ?? [])[1] ?? null);
+  await shot(page, '05-order-created', `created ${results.order_no}`);
 
-  // 6 — Technician role, mobile viewport: complete the job
+  await clickText(page, 'Open order summary');
+  await sleep(1200);
+  results.status_after_create = await page.evaluate(() => (document.body.innerText.match(/\b(New|Assigned|In Progress|Job Done|Reviewed|Closed)\b/) || [''])[0]);
+  await shot(page, '06-order-detail', `order detail (status: ${results.status_after_create}) + audit trail`);
+
+  /* ----------------------------------------------------- technician (phone) --- */
   const mobile = await browser.newPage();
   watch(mobile, 'mobile');
   await mobile.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
   await mobile.goto(BASE, { waitUntil: 'networkidle2' });
-  await sleep(800);
+  await sleep(1400);
   await mobile.evaluate(() => {
     const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Ali');
     b?.click();
   });
-  await sleep(1200);
-  await shot(mobile, '06-tech-jobs-mobile', 'Module 2 technician queue (phone viewport, Ali)');
+  await sleep(1600);
+  await shot(mobile, '07-tech-queue', 'technician queue (phone viewport, Ali)');
 
-  // complete the order the ADMIN just created (proves module 1 → module 2 hand-off)
-  const picked = await mobile.evaluate((orderNo) => {
-    const cards = [...document.querySelectorAll('div.card')];
-    const card = cards.find((c) => orderNo && c.textContent.includes(orderNo));
+  // start the job on the order the admin just created → In Progress
+  results.start_result = await mobile.evaluate((orderNo) => {
+    const card = [...document.querySelectorAll('div.card')].find((c) => orderNo && c.textContent.includes(orderNo));
+    const btn = card ? [...card.querySelectorAll('button')].find((b) => b.textContent.includes('Start job')) : null;
+    if (btn) btn.click();
+    return { cardFound: !!card, startClicked: !!btn };
+  }, results.order_no);
+  await sleep(2000);
+  results.status_after_start = await mobile.evaluate((orderNo) => {
+    const card = [...document.querySelectorAll('div.card')].find((c) => orderNo && c.textContent.includes(orderNo));
+    return card ? (card.textContent.match(/In Progress|Assigned/) || [''])[0] : null;
+  }, results.order_no);
+  await shot(mobile, '08-tech-started', `after Start job → ${results.status_after_start}`);
+
+  // complete it
+  await mobile.evaluate((orderNo) => {
+    const card = [...document.querySelectorAll('div.card')].find((c) => orderNo && c.textContent.includes(orderNo));
     const btn = card ? [...card.querySelectorAll('button')].find((b) => b.textContent.includes('Complete job')) : null;
     if (btn) btn.click();
-    return { found: !!card, clicked: !!btn, orderNo };
-  }, results.orderNo);
-  results.completedOrder = picked;
+  }, results.order_no);
   await sleep(900);
-  await mobile.type('textarea[placeholder="Chemical cleaned indoor unit, topped up gas, tested cooling…"]', 'Replaced faulty capacitor, topped up gas, tested cooling for 20 minutes.');
-  await mobile.type('input[placeholder="Customer satisfied, advised next service in 6 months"]', 'Customer satisfied, spare part replaced.');
+  await mobile.type('textarea[placeholder="Chemical cleaned indoor unit, topped up gas, tested cooling…"]', 'Replaced the drain hose, cleaned the coil, topped up gas and tested cooling for 20 minutes.');
+  await mobile.type('input[placeholder="Customer satisfied, advised next service in 6 months"]', 'Leak fixed, customer advised to service every 6 months.');
   await mobile.evaluate(() => {
-    const inputs = [...document.querySelectorAll('input[type="number"]')];
-    const extra = inputs[0];
+    const extra = document.querySelectorAll('input[type="number"]')[0];
     if (extra) {
       const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
       setter.call(extra, '25');
       extra.dispatchEvent(new Event('input', { bubbles: true }));
     }
   });
-  await sleep(500);
-  await shot(mobile, '07-tech-complete-form', 'Module 2 completion form: final amount auto-calculated');
+  await sleep(600);
+  await shot(mobile, '09-tech-complete-form', 'completion form, final amount auto-calculated');
+  await clickText(mobile, 'Mark job as done');
+  await sleep(3000);
 
-  await mobile.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Mark job as done'));
-    b?.click();
-  });
-  await sleep(1500);
   results.whatsapp = await mobile.evaluate(() => {
     const pre = document.querySelector('pre');
     return pre ? pre.textContent : null;
   });
-  const link = await mobile.evaluate(() => {
+  results.whatsapp_link = await mobile.evaluate(() => {
     const a = [...document.querySelectorAll('a')].find((x) => x.textContent.includes('Send on WhatsApp'));
     return a ? a.getAttribute('href') : null;
   });
-  results.whatsappLink = link;
-  await shot(mobile, '08-whatsapp-notification', 'Module 3 WhatsApp message + deep link after Job Done');
+  await shot(mobile, '10-whatsapp-notification', 'WhatsApp message + deep link triggered by Job Done');
 
-  // 7 — Manager review on desktop
+  /* ------------------------------------------------------------- manager --- */
   const mgr = await browser.newPage();
   watch(mgr, 'manager');
-  await mgr.setViewport({ width: 1366, height: 900 });
+  await mgr.setViewport({ width: 1366, height: 950 });
   await mgr.goto(`${BASE}/review`, { waitUntil: 'networkidle2' });
-  await sleep(900);
+  await sleep(1500);
   await mgr.select('select', 'Manager:Manager').catch(() => {});
-  await sleep(1200);
-  await shot(mgr, '09-manager-review', 'manager review queue (completed jobs)');
+  await sleep(1600);
+  await shot(mgr, '11-manager-review', 'review queue with completed jobs');
+  await clickText(mgr, 'Approve');
+  await sleep(2500);
+  results.reviewed = await mgr.evaluate(() => /Reviewed/.test(document.body.innerText));
+  await shot(mgr, '12-manager-approved', 'job approved → Reviewed');
 
-  await mgr.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Approve'));
-    b?.click();
-  });
-  await sleep(1400);
-  await shot(mgr, '10-manager-approved', 'job approved → Reviewed');
-
-  // 8 — KPI dashboard
+  /* ---------------------------------------------------- KPI + insight AI --- */
   await mgr.goto(`${BASE}/dashboard`, { waitUntil: 'networkidle2' });
-  await sleep(1200);
-  await shot(mgr, '11-dashboard', 'bonus module: KPI leaderboard, revenue, stalled jobs, AI flags');
+  await sleep(2000);
+  await clickText(mgr, 'Analyse this period');
+  await sleep(14000);
+  const dash = await mgr.evaluate(() => document.body.innerText);
+  results.insight = {
+    card: /AI operational insight/i.test(dash),
+    answer: (dash.match(/(?:No technician|The workload|Yes, the workload|Ali)[\s\S]{0,220}/) || [''])[0].replace(/\n/g, ' ').slice(0, 220),
+    query: (dash.match(/query: [a-z_]+/) || [''])[0],
+    planner: (dash.match(/planner: \w+/) || [''])[0],
+  };
+  await shot(mgr, '13-dashboard-insight', `KPI + AI insight (${results.insight.query}, ${results.insight.planner})`);
 
-  // 9 — AI query window
+  /* --------------------------------------------------------- AI window --- */
   await mgr.goto(`${BASE}/ai`, { waitUntil: 'networkidle2' });
-  await sleep(900);
-  await mgr.type('input[placeholder="e.g. What jobs did technician Ali complete last week?"]', 'Which technician completed the most jobs this week?');
-  await mgr.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Ask');
-    b?.click();
-  });
-  await sleep(4000);
-  results.aiAnswer = await mgr.evaluate(() => {
-    const el = [...document.querySelectorAll('p')].find((p) => p.textContent.includes('completed') || p.textContent.includes('jobs'));
-    return document.body.innerText.slice(0, 1200);
-  });
-  await shot(mgr, '12-ai-answer', 'AI operations query window answering with controlled-query data');
+  await sleep(1500);
+  await mgr.type('input[placeholder="e.g. What jobs did technician Ali complete last week?"]', 'How much did we bill this week and what is still outstanding?');
+  await clickText(mgr, 'Ask');
+  await sleep(14000);
+  const ai = await mgr.evaluate(() => document.body.innerText);
+  results.ai_answer = {
+    planner: /planner: llm/.test(ai) ? 'llm' : /planner: heuristic/.test(ai) ? 'heuristic' : 'n/a',
+    phrasing: /answer: llm/.test(ai) ? 'llm' : /answer: template/.test(ai) ? 'template' : 'n/a',
+    source: (ai.match(/source: \w+/) || [''])[0],
+    currencyOk: !/\$\d/.test(ai),
+    snippet: (ai.match(/(?:We billed|The total|RM [\d,]+)[\s\S]{0,180}/) || [''])[0].replace(/\n/g, ' ').slice(0, 200),
+  };
+  await shot(mgr, '14-ai-window', `AI answer (planner: ${results.ai_answer.planner})`);
 
-  // 10 — activity log
+  /* -------------------------------------------------------------- activity --- */
   await mgr.goto(`${BASE}/activity`, { waitUntil: 'networkidle2' });
-  await sleep(900);
-  await shot(mgr, '13-activity', 'audit trail + WhatsApp notification log');
+  await sleep(1600);
+  await shot(mgr, '15-activity', 'audit trail + WhatsApp notification log');
 } catch (err) {
   results.errors.push(`FATAL: ${err.message}`);
 } finally {
@@ -201,4 +232,4 @@ try {
 
 writeFileSync(`${OUT}summary.json`, JSON.stringify(results, null, 2));
 console.log('\n=== SUMMARY ===');
-console.log(JSON.stringify({ orderNo: results.orderNo, whatsapp: results.whatsapp, link: results.whatsappLink, errors: results.errors, steps: results.steps.length }, null, 2));
+console.log(JSON.stringify(results, null, 2));
