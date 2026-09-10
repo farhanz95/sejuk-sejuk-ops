@@ -6,11 +6,19 @@ plus an **AI operations query window** that answers manager questions from contr
 
 Built for the *Programmer Assessment – Operations System + AI Challenge* (9–12 Sep 2026).
 
-- **Live demo:** <https://sejuk-sejuk-ops.web.app> — opens straight into seeded demo data, no setup, no login required
-  (Firebase Hosting. On a static-only host there is no serverless function, so the AI window answers from the same controlled
-  queries in the browser and labels the answer `source: browser`; on Vercel the same questions go through `/api/ai-query`,
-  i.e. the server-side planner — see §5.)
+- **Live demo:** <https://sejuk-sejuk-ops.web.app> — no login, no setup
 - **Repo:** <https://github.com/farhanz95/sejuk-sejuk-ops>
+- **Database:** Supabase project `sejuk-sejuk-ops` (Postgres 17, region Singapore) — 5 tables with 45 orders, 40 service
+  reports, 58 attachments, 252 audit events and 40 notifications. The deployed build is wired to it, so the live demo
+  reads and writes real Postgres rows (the header badge says `supabase`).
+
+### Current deployment (what the reviewer sees)
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Front end | Firebase Hosting (`sejuk-sejuk-ops.web.app`) | `npm run build` output; `firebase.json` + `.firebaserc` in the repo |
+| Database + storage | Supabase `sejuk-sejuk-ops` | schema + seed applied from `supabase/schema.sql` / `supabase/seed.sql` |
+| AI query endpoint | **not deployed on the static host** | `/api/ai-query` answers 404-HTML there, so the AI window deliberately falls back to running the same controlled queries in the browser and says so — see §5. Deploying the repo to Vercel activates the server-side (LLM) path with no code change. |
 - **Stack:** React 18 + TypeScript + Vite + Tailwind CSS 4 · Supabase (Postgres + Storage) · Vercel serverless function for the AI · `node:test` for unit tests
 
 ---
@@ -84,6 +92,13 @@ Set these Vercel env vars (Project → Settings → Environment Variables) for t
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | browser → Supabase |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | server-side reads for the AI endpoint |
 | `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL` | any OpenAI-compatible provider (OpenAI, DeepSeek, Groq, OpenRouter, local llama.cpp…) |
+
+### Where the data lives
+
+`supabase/schema.sql` creates `orders`, `service_reports`, `attachments`, `order_events` and `notifications` plus the
+public `job-files` storage bucket; `supabase/seed.sql` fills them with the same deterministic dataset the offline demo
+uses, so numbers match whichever mode you inspect. Both files are idempotent — re-running them resets the demo rows
+without touching the schema.
 
 ### Tests
 
@@ -213,6 +228,11 @@ Manager). The role switch is real for the workflow: switching to another technic
 by you, and switching away from Admin removes the assign action. Server-side policies in
 `supabase/schema.sql` deliberately allow anon read/write for the demo (with a commented example of the role-checked
 policy you would use with Supabase Auth), and the AI endpoint keeps its key server-side.
+
+This means the shipped build contains the Supabase URL and the **anon** key — that is by design: the anon key is a
+public client credential, which is exactly why RLS exists. The `service_role` key is deliberately *not* used anywhere
+in this project (no code path reads it), and RLS is left open because a mock login cannot be verified server-side.
+The production shape is written out in the comment block at the bottom of `supabase/schema.sql`.
 
 To productionise: Supabase Auth + a `staff(user_id, role)` table, RLS policies per role, `service_role` key only in
 server functions, signed Storage URLs, and an `updated_by` column alongside the audit log.
