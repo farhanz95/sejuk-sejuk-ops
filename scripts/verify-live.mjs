@@ -231,5 +231,37 @@ try {
 }
 
 writeFileSync(`${OUT}summary.json`, JSON.stringify(results, null, 2));
-console.log('\n=== SUMMARY ===');
-console.log(JSON.stringify(results, null, 2));
+
+// Print a compact summary (not the whole JSON: dumping a huge object as the
+// process exits lost the output and produced a meaningless exit code), and set
+// the exit code from the run itself so this is usable as a CI smoke test.
+const checks = {
+  order_created: !!results.order_no,
+  document_read: Number(results.document_reading?.fieldsFound ?? 0) > 0,
+  start_took_effect: results.status_after_start === 'In Progress',
+  whatsapp_ready: !!results.whatsapp_link,
+  reviewed: results.reviewed === true,
+  insight_answered: !!results.insight?.answer,
+  ai_answered: !!results.ai_answer?.snippet,
+  no_console_errors: results.errors.length === 0,
+};
+
+console.log('\n=== SMOKE TEST ===');
+console.log(`base: ${BASE}`);
+console.log(`order: ${results.order_no} | steps: ${results.steps.length} | shots: ${OUT}`);
+for (const [name, ok] of Object.entries(checks)) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+if (results.order_no) {
+  console.log(`\nwhatsapp: ${(results.whatsapp ?? '').split('\n')[2] ?? ''}`);
+  console.log(`ai answer: ${(results.ai_answer?.snippet ?? '').slice(0, 150)}`);
+}
+if (results.errors.length) {
+  console.log('\nconsole/page errors:');
+  results.errors.forEach((e) => console.log(' -', e));
+}
+console.log(`\nfull detail: ${OUT}summary.json`);
+
+const failed = Object.values(checks).filter((v) => !v).length;
+// `process.exitCode` alone left the process exiting 1 even on a clean run (a
+// dangling Chrome child), which makes the script useless as a gate. Exit hard,
+// but only after the summary above has been written to stdout.
+process.exit(failed ? 1 : 0);
