@@ -40,6 +40,27 @@ export function detectRange(q: string): string {
  * deliberately simple and documented as a limitation: it recognises the
  * question shapes listed in the UI, nothing more.
  */
+/**
+ * Turns whatever the fetch layer threw into a sentence a manager can read.
+ *
+ * Static hosts (Firebase Hosting here) answer /api/ai-query with index.html, so
+ * res.json() throws `Unexpected token '<' …` — a true statement that means
+ * nothing to a user. Classify it instead of showing it.
+ */
+export function describeEndpointFailure(note: string | undefined): string {
+  const n = String(note ?? '');
+  if (/Unexpected token|not valid JSON|<!doctype|text\/html/i.test(n)) {
+    return 'this deployment has no server-side AI endpoint (static hosting)';
+  }
+  if (/failed to fetch|networkerror|network request failed|load failed/i.test(n)) {
+    return 'the AI service could not be reached';
+  }
+  if (/no data source|not configured|missing/i.test(n)) {
+    return 'server-side AI is not configured on this host';
+  }
+  return 'the AI endpoint is unavailable';
+}
+
 export function matchIntent(question: string): QueryChoice {
   const q = question.toLowerCase();
   const tech = TECHNICIAN_NAMES.find((t) => q.includes(t.toLowerCase()));

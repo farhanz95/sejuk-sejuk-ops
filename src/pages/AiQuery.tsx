@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../state/AppState';
 import { QUERY_CATALOG, findQuery } from '../lib/analytics';
-import { heuristicAnswer, matchIntent } from '../lib/ai-fallback';
+import { describeEndpointFailure, heuristicAnswer, matchIntent } from '../lib/ai-fallback';
 import type { OpsData } from '../lib/types';
 import { Card, EmptyState, SectionTitle } from '../components/ui';
 
@@ -42,10 +42,8 @@ function answerInBrowser(question: string, data: OpsData, note?: string): AiResp
     rows = { error: err instanceof Error ? err.message : String(err) };
   }
   // Never surface a raw technical error (e.g. "Unexpected token '<'") to a
-  // manager — say what happened in plain language instead.
-  const because = /unavailable|fetch|network|Failed to fetch/i.test(note ?? '')
-    ? 'the AI service could not be reached'
-    : 'server-side AI is not configured on this host';
+  // manager — classify it into a sentence instead.
+  const because = describeEndpointFailure(note);
   return {
     answer:
       heuristicAnswer(question, query.name, rows) +
@@ -66,6 +64,8 @@ export default function AiQuery() {
   const [response, setResponse] = useState<AiResponse | null>(null);
   const [asked, setAsked] = useState<string[]>([]);
   const [showRows, setShowRows] = useState(false);
+  /** Set once the endpoint proves unusable, so later questions skip the round-trip. */
+  const [endpointDown, setEndpointDown] = useState<string | null>(null);
 
   const examples = useMemo(() => QUERY_CATALOG.flatMap((q) => q.examples).slice(0, 8), []);
 
@@ -75,6 +75,16 @@ export default function AiQuery() {
     setBusy(true);
     setResponse(null);
     setShowRows(false);
+
+    // A static host has no /api/ai-query; once that is known, answer from the
+    // controlled catalog locally instead of paying for a doomed round-trip.
+    if (endpointDown) {
+      setResponse(answerInBrowser(text, data, endpointDown));
+      setAsked((prev) => [text, ...prev.filter((x) => x !== text)].slice(0, 6));
+      setBusy(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/ai-query', {
         method: 'POST',
@@ -85,16 +95,18 @@ export default function AiQuery() {
       });
       const json = (await res.json()) as AiResponse;
       if (!res.ok || json.error) {
-        // The endpoint answered with an error (or a static host has no API at
-        // all) — answer from the same controlled catalog in the browser instead
-        // of showing the user a dead end.
+        // The endpoint answered with an error — answer from the same controlled
+        // catalog in the browser instead of showing the user a dead end.
+        setEndpointDown(json.error ?? `HTTP ${res.status}`);
         setResponse(answerInBrowser(text, data, json.error));
       } else {
         setResponse(json);
       }
       setAsked((prev) => [text, ...prev.filter((x) => x !== text)].slice(0, 6));
     } catch (err) {
-      setResponse(answerInBrowser(text, data, err instanceof Error ? err.message : String(err)));
+      const note = err instanceof Error ? err.message : String(err);
+      setEndpointDown(note);
+      setResponse(answerInBrowser(text, data, note));
     } finally {
       setBusy(false);
     }
@@ -109,6 +121,15 @@ export default function AiQuery() {
           sees the raw database and never writes SQL.
         </p>
       </div>
+
+      {endpointDown ? (
+        <Card className="border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+          <strong>No server-side AI endpoint on this host.</strong> The assistant is answering from the same controlled
+          queries, run in your browser, so every figure is still real and auditable. Deploy to Vercel (or set{' '}
+          <code>AI_API_KEY</code> for a serverless function) to have a model plan the query and phrase the answer — the
+          numbers come from the same catalog either way.
+        </Card>
+      ) : null}
 
       <Card className="p-4">
         <div className="flex flex-col gap-2 md:flex-row">
