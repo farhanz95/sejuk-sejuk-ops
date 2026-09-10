@@ -88,7 +88,7 @@ Set these Vercel env vars (Project → Settings → Environment Variables) for t
 ### Tests
 
 ```bash
-npm test           # 40 tests: business rules, aggregations, AI planner, API handler, full workflow
+npm test           # 47 tests: business rules, aggregations, AI planner, API handler, workflow, UI render
 npm run seed:sql   # regenerate supabase/seed.sql from src/lib/seed.ts
 ```
 
@@ -241,7 +241,7 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
 
 ## 8. Tests
 
-`npm test` → **40 passing** (`node:test` + `tsx`):
+`npm test` → **47 passing** (`node:test` + `tsx`):
 
 - `tests/domain.test.ts` — order-number generation, quoted+extra maths, the three permission rules (including
   "another technician is refused"), draft/completion validation, the 6-file cap, the payment ceiling, the exact
@@ -254,6 +254,10 @@ server functions, signed Storage URLs, and an `updated_by` column alongside the 
 - `tests/api-handler.test.ts` — the **real serverless handler** with mock req/res: 400s, 405, snapshot mode,
   leaderboard/finance/anomaly answers, unknown question degrading to the overview, and that no SQL leaks into
   an answer.
+- `tests/ui-render.test.ts` — mounts the **real React app in jsdom** and clicks it: landing → role switch →
+  order list → the New order dialog (auto-generated number previewed), the technician queue, the dashboard
+  (KPI figures + all four technicians), the AI window's supported-query and limitation panels, and the activity
+  log. This is the layer a build cannot verify — bad hooks or a crash on first paint show up here.
 - `tests/workflow.test.ts` — the full journey against the **real `DemoRepo`** the UI uses (localStorage
   polyfilled): auto-generated order number, `New` → `Assigned` → `In Progress` → `Job Done` → `Reviewed` →
   `Closed`, the audit trail containing every expected event, the notification being produced *by* the status
