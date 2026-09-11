@@ -13,6 +13,11 @@ import AiQuery from './pages/AiQuery';
 import Activity from './pages/Activity';
 import MyActivity from './pages/MyActivity';
 import { RequireRole } from './components/RequireRole';
+import SignInPage from './pages/SignInPage';
+import JoinWithKeyPage from './pages/JoinWithKeyPage';
+import AccessKeysPage from './pages/AccessKeysPage';
+import { useAuth } from './state/AuthState';
+import type { ReactNode } from 'react';
 
 function Landing() {
   const { actor, setActor, mode, ready, data } = useApp();
@@ -91,10 +96,43 @@ function NotFound() {
   return <EmptyState icon="🧭" title="Page not found" hint="Use the tabs above to get back to an operations screen." />;
 }
 
+/**
+ * Who gets in.
+ *
+ * - Firebase/Supabase not configured → straight to the app on demo data.
+ * - Configured, no Google session → sign-in screen (which also offers demo mode,
+ *   so a reviewer is never locked out of the assessment build).
+ * - Signed in but no staff row yet → the access-key step, the one thing that
+ *   stops an arbitrary Google account from reading operations data.
+ */
+function AuthGate({ children }: { children: ReactNode }) {
+  const { configured, authReady, user, profile, loadingProfile, signOutStaff } = useAuth();
+  const demo = typeof localStorage !== 'undefined' && localStorage.getItem('ss_demo_mode') === '1';
+
+  if (!configured || demo) return <>{children}</>;
+  if (!authReady) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Loading…</div>
+    );
+  }
+  if (!user) return <SignInPage />;
+  if (loadingProfile || !profile) {
+    return (
+      <>
+        <JoinWithKeyPage />
+        <button className="fixed bottom-4 right-4 btn-ghost text-xs" onClick={() => void signOutStaff()}>
+          Sign out
+        </button>
+      </>
+    );
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route element={<Layout />}>
+      <Route element={<AuthGate><Layout /></AuthGate>}>
         <Route index element={<Landing />} />
 
         {/* Technician: own queue and own history only */}
@@ -113,6 +151,9 @@ export default function App() {
         <Route path="dashboard" element={<RequireRole roles={['Admin', 'Manager']}><Dashboard /></RequireRole>} />
         <Route path="ai" element={<RequireRole roles={['Admin', 'Manager']}><AiQuery /></RequireRole>} />
         <Route path="activity" element={<RequireRole roles={['Admin', 'Manager']}><Activity /></RequireRole>} />
+
+        {/* Admin: who may join, and with which key */}
+        <Route path="access-keys" element={<RequireRole roles={['Admin']}><AccessKeysPage /></RequireRole>} />
 
         <Route path="*" element={<NotFound />} />
         <Route path="home" element={<Navigate to="/" replace />} />

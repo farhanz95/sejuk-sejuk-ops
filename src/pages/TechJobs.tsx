@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../state/AppState';
 import { MAX_ATTACHMENTS, amountProblem, computeFinalAmount, money, validateCompletion } from '../lib/domain';
 import type { PaymentMethod } from '../lib/types';
-import { Card, EmptyState, Field, Modal, MoneyInput, MoneyText, SectionTitle, StatCard, StatusPill, TimeText } from '../components/ui';
+import { Card, ConfirmPanel, EmptyState, Field, Modal, MoneyInput, MoneyText, SectionTitle, StatCard, StatusPill, TimeText } from '../components/ui';
 import { DemoFillButton } from '../components/DemoFillButton';
 import { SupabaseRepo } from '../lib/repo';
 
@@ -36,6 +36,9 @@ export default function TechJobs() {
   // shown next to the button that was pressed instead of at the top of a sheet
   // the technician has already scrolled past.
   const [confirming, setConfirming] = useState(false);
+  // Starting a job is a one-tap, one-time action from the road — ask first, in
+  // case the wrong card was tapped.
+  const [confirmStart, setConfirmStart] = useState<string | null>(null);
   const workDoneRef = useRef<HTMLTextAreaElement>(null);
 
   // Work log: what a technician actually opens this screen to see. Search covers
@@ -207,7 +210,7 @@ export default function TechJobs() {
     );
     setErrors(found);
     if (found.length) {
-      workDoneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      workDoneRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
       workDoneRef.current?.focus();
       return;
     }
@@ -358,7 +361,7 @@ export default function TechJobs() {
                         <button
                           className="btn-secondary !py-2"
                           title="Tell the office you have arrived and started work"
-                          onClick={() => void startJob(o.order_no)}
+                          onClick={() => setConfirmStart(o.order_no)}
                         >
                           ▶ Start job
                         </button>
@@ -386,8 +389,44 @@ export default function TechJobs() {
       )}
 
       <Modal
+        open={!!confirmStart}
+        title="Start this job?"
+        onClose={() => setConfirmStart(null)}
+      >
+        {(() => {
+          const order = data.orders.find((o) => o.order_no === confirmStart);
+          if (!order) return null;
+          return (
+            <ConfirmPanel
+              icon="▶️"
+              title="Start this job now?"
+              description="The office will see that you have arrived and started work. Do this only when you are actually on site."
+              rows={[
+                { label: 'Order', value: <strong className="text-slate-800">{order.order_no}</strong> },
+                { label: 'Customer', value: order.customer_name },
+                { label: 'Address', value: order.address },
+                { label: 'Service', value: order.service_type },
+                { label: 'Problem', value: order.problem_description },
+              ]}
+              confirmLabel="Yes, start job"
+              cancelLabel="Not now"
+              busy={busy}
+              tone="good"
+              onConfirm={async () => {
+                setBusy(true);
+                await startJob(order.order_no);
+                setBusy(false);
+                setConfirmStart(null);
+              }}
+              onCancel={() => setConfirmStart(null)}
+            />
+          );
+        })()}
+      </Modal>
+
+      <Modal
         open={!!openOrder}
-        title={doneNo ? `Job ${doneNo} completed` : `Complete ${openOrder?.order_no ?? ''}`}
+        title={confirming ? 'Confirm completion' : doneNo ? `Job ${doneNo} completed` : `Complete ${openOrder?.order_no ?? ''}`}
         onClose={() => {
           setOpenNo(null);
           reset();
@@ -395,7 +434,26 @@ export default function TechJobs() {
         }}
         wide
       >
-        {openOrder && doneNo ? (
+        {openOrder && confirming ? (
+          <ConfirmPanel
+            icon="✅"
+            title="Mark this job as done?"
+            description="The office sees it as finished and the WhatsApp message for the customer is prepared. You can still change it from the office afterwards."
+            rows={[
+              { label: 'Order', value: <strong className="text-slate-800">{openOrder.order_no}</strong> },
+              { label: 'Customer', value: openOrder.customer_name },
+              { label: 'Work done', value: workDone.trim() || '—' },
+              { label: 'Final amount', value: <strong className="text-slate-900"><MoneyText value={due} /></strong> },
+              { label: 'Payment', value: paid === '' ? 'Not paid yet' : <><MoneyText value={Number(paid)} /> · {method}</> },
+              { label: 'Evidence', value: files.length ? `${files.length} file${files.length === 1 ? '' : 's'}` : 'no photos attached' },
+            ]}
+            confirmLabel="Yes, mark it as done"
+            cancelLabel="Back to the form"
+            busy={busy}
+            onConfirm={() => void confirmSubmit()}
+            onCancel={() => setConfirming(false)}
+          />
+        ) : openOrder && doneNo ? (
           <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
               <div className="font-semibold">Job marked as done ✅</div>
@@ -569,65 +627,6 @@ export default function TechJobs() {
             </div>
             <DemoFillButton onFill={fillSample} label="Fill this report with sample data" />
 
-            {/* The confirm step — an in-app panel, not window.confirm (which
-                looks alien in a field app and cannot show what is about to be
-                sent). Nothing leaves the device until the second tap. */}
-            {confirming ? (
-              <div className="absolute inset-0 z-20 flex flex-col justify-center bg-white px-5 py-8">
-                <div className="mx-auto w-full max-w-md space-y-4">
-                  <div className="flex flex-col items-center text-center">
-                    <span className="grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-3xl">✅</span>
-                    <h4 className="mt-3 text-lg font-bold text-slate-800">Mark this job as done?</h4>
-                    <p className="mt-1 text-sm text-slate-500">
-                      The office sees it as finished and the WhatsApp message for the customer is prepared. You can still
-                      change it from the office afterwards.
-                    </p>
-                  </div>
-
-                  <Card className="space-y-2 bg-slate-50 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order</span>
-                      <span className="text-sm font-semibold text-slate-800">{openOrder.order_no}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</span>
-                      <span className="min-w-0 truncate text-sm text-slate-700">{openOrder.customer_name}</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Work done</span>
-                      <span className="min-w-0 text-right text-sm text-slate-700">{workDone.trim() || '—'}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Final amount</span>
-                      <span className="text-base font-bold text-slate-900">
-                        <MoneyText value={due} />
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment</span>
-                      <span className="text-sm text-slate-700">
-                        {paid === '' ? 'Not paid yet' : <><MoneyText value={Number(paid)} /> · {method}</>}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</span>
-                      <span className="text-sm text-slate-700">
-                        {files.length ? `${files.length} file${files.length === 1 ? '' : 's'}` : 'no photos attached'}
-                      </span>
-                    </div>
-                  </Card>
-
-                  <div className="flex flex-col gap-2">
-                    <button className="btn-primary w-full" disabled={busy} onClick={() => void confirmSubmit()}>
-                      {busy ? 'Saving…' : 'Yes, mark it as done'}
-                    </button>
-                    <button className="btn-secondary w-full" disabled={busy} onClick={() => setConfirming(false)}>
-                      Back to the form
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
           </>
         ) : (
           <EmptyState icon="🔍" title="Job not found" />

@@ -363,6 +363,51 @@ in. Three changes:
   backspace a zero before entering a value. Implemented once as `MoneyInput`
   (`src/components/ui.tsx`) and used for extra charges, payment and quoted price.
 
+#### Installable app + staff sign-in (2026-09-11)
+
+**PWA.** The portal is installable: `vite-plugin-pwa` generates a service worker
+(precaching the shell, `navigateFallback` for the SPA routes, `/api/*` explicitly
+excluded so AI answers are never served from cache) and a manifest with the ❄️
+brand icons at 192/512 plus a maskable entry for Android. `InstallAppButton`
+replays Chrome's `beforeinstallprompt`, and on iOS — which never fires it — shows
+the Share → Add to Home Screen steps instead. A technician in a riser room with
+no signal can still open the job sheet they already loaded.
+
+**Firebase Authentication (Google), with a one-time access key to join.**
+
+- **One-tap sign-in.** Google only, because the technician already has that
+  account on their phone: no password to remember in the field and none for us to
+  store. `signInWithPopup` falls back to a full-page redirect when an in-app
+  browser (WhatsApp, Instagram) blocks popups.
+- **Joining needs a key.** Any Google account could otherwise read operations
+  data, so an admin creates a key for a named team in **Access keys**, hands it
+  over in person / email / WhatsApp (there is a "Send on WhatsApp" link that
+  writes the instructions for them), and the technician enters it once after
+  signing in with Google. Keys can be given an expiry and revoked; every key
+  stays listed with its state (ready / used / expired / revoked) and who claimed
+  it.
+- **Claiming is atomic and in the database.** `claim_join_key()` (in
+  `supabase/staff_auth.sql`) locks the row, rejects a used, revoked or expired
+  key, refuses a key issued for a different team, then writes `staff_accounts` and
+  stamps the key in one transaction — so two technicians racing the same code
+  cannot both get in.
+- **Afterwards, Google alone.** The key is a joining step, not a password: the
+  next morning the technician taps Google and they are in, because Firebase keeps
+  the session on the device.
+- **The real account defines the role.** When a staff row exists, `AppState`
+  derives the actor from it and the header shows the signed-in person with a Sign
+  out button — the demo role selector disappears, so it can never be used to walk
+  into the manager's screens.
+- **Demo mode is still offered, openly.** This is an assessment build: the
+  sign-in screen has a "Continue in demo mode" button, so a reviewer can walk
+  through every screen without being handed a Google account.
+
+**Config:** `VITE_FIREBASE_*` (public web config) and the Supabase anon key are
+read as literal `import.meta.env.X` at build time. Reading them dynamically
+(`env[key]`) silently produced an empty config — sign-in disabled in production
+while every local test passed, since tests have no env either. That is a real trap
+worth remembering with Vite.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

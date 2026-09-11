@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useApp, ROLE_OPTIONS } from '../state/AppState';
+import { InstallAppButton } from './InstallAppButton';
+import { useAuth } from '../state/AuthState';
 import { TECHNICIANS } from '../lib/types';
 import { Toasts } from './ui';
 import { homeForRole } from './RequireRole';
@@ -8,7 +10,8 @@ import type { Role } from '../lib/types';
 const ROLE_ICON = { Admin: '🗂️', Technician: '🔧', Manager: '📊' } as const;
 
 export default function Layout() {
-  const { actor, setActor, resetActor, mode, data, resetDemo } = useApp();
+  const { actor, setActor, resetActor, mode, data, resetDemo, authManaged } = useApp();
+  const auth = useAuth();
   const navigate = useNavigate();
 
   // Least privilege: a technician works in their own queue and their own
@@ -33,6 +36,8 @@ export default function Layout() {
             { to: '/dashboard', label: 'Dashboard', icon: '📈' },
             { to: '/ai', label: 'AI Query', icon: '🤖' },
             { to: '/activity', label: 'Activity', icon: '🕘' },
+            // Only offered where staff accounts exist — a demo session has no keys to manage.
+            ...(auth.configured ? [{ to: '/access-keys', label: 'Access keys', icon: '🔑' }] : []),
           ];
 
   return (
@@ -53,11 +58,37 @@ export default function Layout() {
           </button>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            <InstallAppButton />
             {/* The "supabase" / "demo data" chip was removed: the storage backend
                 is our concern, not the user's, and it told a technician nothing
                 about their day. Each screen now shows its own work summary
                 instead (see TechJobs' work log). */}
 
+            {/* A signed-in staff account shows their identity instead of the mock
+                role switch: switching roles is a demo affordance, and it must not
+                be a way around the role rules for a real user. */}
+            {authManaged ? (
+              <span className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
+                {auth.user?.photoURL ? (
+                  <img src={auth.user.photoURL} alt="" className="h-6 w-6 rounded-full" referrerPolicy="no-referrer" />
+                ) : (
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-600 text-[11px] font-bold text-white">
+                    {(auth.profile?.display_name ?? auth.profile?.email ?? '?').slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="hidden text-xs leading-tight sm:block">
+                  <span className="block font-semibold text-slate-700">{auth.profile?.display_name ?? auth.profile?.email}</span>
+                  <span className="block text-slate-500">
+                    {actor.role}
+                    {auth.profile?.technician_name ? ` · ${auth.profile.technician_name}` : ''}
+                  </span>
+                </span>
+                <button className="btn-ghost !px-1.5 !py-1 text-xs" onClick={() => void auth.signOutStaff()}>
+                  Sign out
+                </button>
+              </span>
+            ) : (
+            <>
             <select
               className="input !w-auto !py-2"
               value={`${actor.role}:${actor.name}`}
@@ -91,6 +122,8 @@ export default function Layout() {
             >
               switch role
             </button>
+            </>
+            )}
 
             {mode === 'demo' ? (
               <button type="button" className="btn-ghost !px-2 !py-2 text-xs" title="Reset the seeded demo dataset" onClick={() => void resetDemo()}>

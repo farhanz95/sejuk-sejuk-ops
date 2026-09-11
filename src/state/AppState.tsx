@@ -4,6 +4,7 @@
  * workflow rules (who may assign / complete / review) live in one place.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useAuth } from './AuthState';
 import type { OpsData, Order, Role, ServiceReport, Technician } from '../lib/types';
 import { createRepo, type Actor, type CompletionInput, type OpsRepo, type OrderInput } from '../lib/repo';
 import { canAssign, canMarkDone, canReview } from '../lib/domain';
@@ -36,6 +37,8 @@ interface AppState {
   close: (orderNo: string) => Promise<void>;
   markSent: (orderNo: string) => Promise<void>;
   resetDemo: () => Promise<void>;
+  /** true when the actor is a signed-in staff account rather than the demo switch */
+  authManaged: boolean;
   order: (orderNo: string) => Order | undefined;
   reportFor: (orderNo: string) => ServiceReport | undefined;
 }
@@ -123,6 +126,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setActor(DEFAULT_ACTOR);
   }, []);
 
+  // A signed-in staff account defines the actor: their role and, for a
+  // technician, which field team they are. The demo role switch is only used
+  // when there is no account (reviewers) — otherwise anyone could switch into
+  // the manager's screens from the header.
+  const auth = useAuth();
+  const authManaged = auth.configured && Boolean(auth.profile);
+
+  useEffect(() => {
+    const profile = auth.profile;
+    if (!authManaged || !profile) return;
+    const name =
+      profile.role === 'Technician'
+        ? profile.technician_name ?? profile.display_name ?? profile.email ?? 'Technician'
+        : profile.display_name ?? profile.email ?? profile.role;
+    setActor((prev) => (prev.role === profile.role && prev.name === name ? prev : { role: profile.role, name }));
+  }, [authManaged, auth.profile]);
+
   const guard = useCallback(
     async <T,>(fn: () => Promise<T>, okMessage: string, allow: boolean, denyMessage: string): Promise<T | null> => {
       if (!allow) {
@@ -144,6 +164,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const value: AppState = {
     ready,
+    authManaged,
     mode: repo.mode,
     data,
     actor,

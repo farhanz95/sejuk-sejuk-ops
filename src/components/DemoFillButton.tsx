@@ -58,7 +58,8 @@ export function DemoFillButton({
       if (!pos) return;
       drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y, startX: e.clientX, startY: e.clientY, moved: false };
       setDragging(true);
-      e.currentTarget.setPointerCapture(e.pointerId);
+      // Optional: jsdom and older Safari lack pointer capture.
+      e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     [pos],
   );
@@ -80,7 +81,7 @@ export function DemoFillButton({
       drag.current = null;
       setDragging(false);
       try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
       } catch {
         /* pointer already released */
       }

@@ -112,6 +112,69 @@ export function MoneyInput({
   );
 }
 
+/**
+ * The body of a confirmation step: what is about to happen, what it applies to,
+ * and two clear choices.
+ *
+ * Rendered as the ONLY content of its modal — an earlier version floated it over
+ * the sheet with `absolute inset-0`, which in a scrolling modal left the bottom
+ * of the form visible under the panel (two screens on top of each other).
+ */
+export function ConfirmPanel({
+  icon = '❓',
+  title,
+  description,
+  rows,
+  confirmLabel,
+  cancelLabel = 'Back',
+  busy = false,
+  onConfirm,
+  onCancel,
+  tone = 'brand',
+}: {
+  icon?: string;
+  title: string;
+  description?: string;
+  rows?: { label: string; value: ReactNode }[];
+  confirmLabel: string;
+  cancelLabel?: string;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  tone?: 'brand' | 'good';
+}) {
+  const toneClasses = tone === 'good' ? 'bg-emerald-50 text-emerald-700' : 'bg-brand-50 text-brand-700';
+  return (
+    <div className="mx-auto w-full max-w-md space-y-4">
+      <div className="flex flex-col items-center text-center">
+        <span className={`grid h-14 w-14 place-items-center rounded-full text-3xl ${toneClasses}`}>{icon}</span>
+        <h4 className="mt-3 text-lg font-bold text-slate-800">{title}</h4>
+        {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+      </div>
+
+      {rows?.length ? (
+        <Card className="space-y-2 bg-slate-50 p-4">
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-start justify-between gap-3">
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">{row.label}</span>
+              <span className="min-w-0 text-right text-sm text-slate-700">{row.value}</span>
+            </div>
+          ))}
+        </Card>
+      ) : null}
+
+      <div className="flex flex-col gap-2">
+        <button className="btn-primary w-full" disabled={busy} onClick={onConfirm}>
+          {busy ? 'Working…' : confirmLabel}
+        </button>
+        <button className="btn-secondary w-full" disabled={busy} onClick={onCancel}>
+          {cancelLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function EmptyState({ title, hint, icon = '📭' }: { title: string; hint?: string; icon?: string }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/60 px-6 py-10 text-center">

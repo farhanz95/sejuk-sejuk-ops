@@ -34,6 +34,7 @@ const { act } = await import('react');
 const { MemoryRouter } = await import('react-router-dom');
 const App = (await import('../src/App')).default;
 const { AppStateProvider } = await import('../src/state/AppState');
+const { AuthProvider } = await import('../src/state/AuthState');
 
 const container = dom.window.document.getElementById('root')!;
 let root: ReturnType<typeof createRoot>;
@@ -51,7 +52,11 @@ async function mount(path = '/', opts: { keepRole?: boolean } = {}) {
       React.createElement(
         MemoryRouter,
         { initialEntries: [path] },
-        React.createElement(AppStateProvider, null, React.createElement(App, null)),
+        React.createElement(
+          AuthProvider,
+          null,
+          React.createElement(AppStateProvider, null, React.createElement(App, null)),
+        ),
       ),
     );
   });
@@ -538,4 +543,42 @@ test('the completion report can be filled with sample data', async () => {
   assert.match(remarks.value, /reminder in 6 months/, 'remarks were filled');
   const extra = inputByPlaceholder('0') as HTMLInputElement;
   assert.equal(extra.value, '25', 'extra charges were filled');
+});
+
+
+test('starting a job asks for confirmation first', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+  await clickText('Start job');
+
+  const body = text();
+  assert.match(body, /Start this job now\?/, 'the confirmation appears');
+  assert.match(body, /Yes, start job/);
+  assert.match(body, /Not now/);
+  assert.match(body, /SS-2026-\d{4}/, 'it names the job being started');
+
+  // cancel first: nothing changes
+  await clickText('Not now');
+  assert.ok(!/Start this job now\?/.test(text()), 'the panel closed without starting');
+
+  // then confirm
+  await clickText('Start job');
+  await clickText('Yes, start job');
+  assert.match(text(), /In Progress|started/i, 'the job is now in progress');
+});
+
+test('the confirmation panel replaces the form instead of stacking on it', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+  await clickText('Complete job');
+  await typeInto(textareaByPlaceholder('Chemical cleaned indoor unit'), 'Serviced the unit');
+  await clickText('Mark job as done');
+
+  const body = text();
+  assert.match(body, /Mark this job as done\?/);
+  // the sheet's own fields must not still be on screen underneath
+  assert.ok(!/Extra charges \(RM\)/.test(body), 'the completion form is not rendered behind the panel');
+  assert.ok(!/Payment method/.test(body), 'nor its payment fields');
 });
