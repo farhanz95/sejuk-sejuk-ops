@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { OrderStatus } from '../lib/types';
 import { useApp } from '../state/AppState';
+import { registerModal } from '../lib/modalStack';
 
 const STATUS_STYLE: Record<OrderStatus, string> = {
   New: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -186,6 +187,23 @@ export function EmptyState({ title, hint, icon = '📭' }: { title: string; hint
 }
 
 export function Modal({ open, title, onClose, children, wide = false }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  // Android/phone back button: while this modal is open it owns the gesture, so
+  // back closes the dialog instead of leaving the screen (see lib/modalStack).
+  useEffect(() => {
+    if (!open) return;
+    return registerModal(onClose);
+  }, [open, onClose]);
+
+  // Escape does the same on a desktop keyboard.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm md:items-center md:p-6">

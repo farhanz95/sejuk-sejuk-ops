@@ -429,6 +429,24 @@ spent / revoked / expired / wrong-team key is refused, plus "the plaintext colum
 is gone" and "stored keys are hashes". It creates its own fixtures and deletes
 them again (14/14 passing).
 
+#### Back button and demo mode (2026-09-11)
+
+- **Back always means "one level up from what you see."** A modal is not a route,
+  so on Android the back gesture used to leave the app (or jump to wherever you
+  came from) with a dialog still open. `lib/modalStack.ts` now gives every modal
+  a history entry while it is open: back pops that entry and closes the top-most
+  dialog, and a modal closed by a button walks its entry off again so the stack
+  never grows stale. Wired in one place — the shared `Modal` component — so every
+  dialog in the app behaves the same, and Escape does the same on a desktop
+  keyboard. Drilling into `/orders/SS-2026-0042` and pressing back returns to the
+  list; opening that URL cold lands on the list for the current role, instead of
+  throwing the user out of the portal.
+- **Demo mode is no longer a one-way door.** It is entered deliberately from the
+  sign-in screen, and the header now shows a `demo` badge with **reset** and
+  **exit demo** — exiting clears the flag and returns to the sign-in screen, so a
+  reviewer can try a real account afterwards (previously the flag hid the sign-in
+  screen for good, with no way back).
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

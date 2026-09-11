@@ -582,3 +582,50 @@ test('the confirmation panel replaces the form instead of stacking on it', async
   assert.ok(!/Extra charges \(RM\)/.test(body), 'the completion form is not rendered behind the panel');
   assert.ok(!/Payment method/.test(body), 'nor its payment fields');
 });
+
+
+test('the phone back button closes a modal instead of leaving the screen', async () => {
+  await mount('/orders');
+  await clickText('+ New order');
+  assert.match(text(), /New service order/, 'the dialog is open');
+
+  // Android back = a popstate event; it must close the dialog and stay put.
+  await act(async () => {
+    dom.window.dispatchEvent(new dom.window.PopStateEvent('popstate'));
+  });
+  assert.ok(!/New service order/.test(text()), 'back closed the dialog');
+  assert.match(text(), /Service orders/, 'and left the order list on screen');
+  assert.ok(inputByPlaceholder('Search order no'), 'the list search is still there');
+
+  // Reopening then closing with the button must not leave a stale history entry
+  // behind: the next back press should close it again, not a phantom one.
+  await clickText('+ New order');
+  assert.match(text(), /New service order/);
+  await clickText('Cancel');
+  assert.ok(!/New service order/.test(text()), 'the button closed it');
+
+  await clickText('+ New order');
+  await act(async () => {
+    dom.window.dispatchEvent(new dom.window.PopStateEvent('popstate'));
+  });
+  assert.ok(!/New service order/.test(text()), 'back still works after a button close');
+});
+
+test('Escape closes a modal too', async () => {
+  await mount('/orders');
+  await clickText('+ New order');
+  assert.match(text(), /New service order/);
+  await act(async () => {
+    dom.window.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  assert.ok(!/New service order/.test(text()), 'Escape closed the dialog');
+});
+
+test('demo mode can be left again', async () => {
+  localStorage.setItem('ss_demo_mode', '1');
+  await mount('/orders', { keepRole: true });
+  assert.ok(/exit demo/i.test(text()), 'the header offers a way out of demo mode');
+
+  await clickText('exit demo');
+  assert.equal(localStorage.getItem('ss_demo_mode'), null, 'the demo flag was cleared');
+});

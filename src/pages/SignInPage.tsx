@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../state/AuthState';
+import { enterDemoMode } from '../lib/demoMode';
 
 /**
  * One-tap sign-in.
@@ -20,7 +21,7 @@ export default function SignInPage() {
   const [error, setError] = useState<string | null>(null);
 
   const startDemo = () => {
-    localStorage.setItem('ss_demo_mode', '1');
+    enterDemoMode();
     navigate('/');
     window.location.reload();
   };

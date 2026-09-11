@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useApp, ROLE_OPTIONS } from '../state/AppState';
 import { InstallAppButton } from './InstallAppButton';
 import { useAuth } from '../state/AuthState';
+import { isDemoMode, exitDemoMode } from '../lib/demoMode';
 import { TECHNICIANS } from '../lib/types';
 import { Toasts } from './ui';
 import { homeForRole } from './RequireRole';
@@ -125,10 +126,33 @@ export default function Layout() {
             </>
             )}
 
-            {mode === 'demo' ? (
-              <button type="button" className="btn-ghost !px-2 !py-2 text-xs" title="Reset the seeded demo dataset" onClick={() => void resetDemo()}>
-                reset
-              </button>
+            {isDemoMode() || mode === 'demo' ? (
+              <>
+                <span
+                  className="chip border border-amber-200 bg-amber-50 text-amber-800"
+                  title="You are exploring a seeded dataset in this browser, with no account."
+                >
+                  demo
+                </span>
+                <button
+                  type="button"
+                  className="btn-ghost !px-2 !py-2 text-xs"
+                  title="Reset the seeded demo dataset"
+                  onClick={() => void resetDemo()}
+                >
+                  reset
+                </button>
+                {/* Leaving demo used to be impossible — the flag hid the sign-in
+                    screen for good. One tap now returns there. */}
+                <button
+                  type="button"
+                  className="btn-ghost !px-2 !py-2 text-xs"
+                  title="Leave demo mode and go back to the sign-in screen"
+                  onClick={() => exitDemoMode()}
+                >
+                  exit demo
+                </button>
+              </>
             ) : null}
           </div>
         </div>

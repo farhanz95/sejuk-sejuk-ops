@@ -28,7 +28,17 @@ export default function OrderDetail() {
 
   return (
     <div className="space-y-4">
-      <button className="btn-ghost !px-0 text-sm" onClick={() => navigate(-1)}>
+      <button
+        className="btn-ghost !px-0 text-sm"
+        onClick={() => {
+          // If this page was opened directly (a shared link), there is nothing to
+          // go "back" to inside the app — so land on the list for this role
+          // instead of throwing the user out of the portal.
+          const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+          if (idx > 0) navigate(-1);
+          else navigate(actor.role === 'Technician' ? '/jobs' : '/orders');
+        }}
+      >
         ← Back
       </button>
 
