@@ -321,6 +321,25 @@ act on, with one shared search + filter behaviour across the app (the app's own
 - **Technician / My jobs** — as above: To do, Waiting longest, Done today, Done
   this week with the value of that work.
 
+#### Completing a job: a real confirmation step (2026-09-11)
+
+A technician reported that "Mark job as done" did not respond. It did — the
+report failed validation (the "Work done" field, which is off-screen once the
+sheet is scrolled, was empty) and the error was printed at the TOP of the sheet,
+where nobody was looking. Three changes:
+
+- **Validation failures are impossible to miss**: the message now sits directly
+  above the button that was pressed ("Not saved yet — please fix this:" plus the
+  field names), and the sheet scrolls to and focuses the field at fault.
+- **A confirmation panel before anything is sent** — deliberately not
+  `window.confirm`, which looks alien in a field app and cannot show what is
+  about to be submitted. The panel restates the order, customer, work done, final
+  amount, payment and evidence, with "Yes, mark it as done" / "Back to the form".
+  Nothing is written until the second tap.
+- **A failed save can never be silent**: if the write fails, the form returns with
+  an explanation that nothing was submitted, instead of a button that appears to
+  do nothing.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

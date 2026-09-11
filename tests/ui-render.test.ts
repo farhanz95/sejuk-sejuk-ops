@@ -62,12 +62,19 @@ const text = () => container.textContent ?? '';
 /** Change via the native setter so React's onChange fires (JSX inputs ignore a
  *  plain `value =` assignment). */
 async function typeInto(input: Element, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+  const proto = input.tagName === 'TEXTAREA' ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   assert.ok(setter, 'the native value setter exists');
   await act(async () => {
     setter!.call(input, value);
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   });
+}
+
+function textareaByPlaceholder(needle: string) {
+  const el = Array.from(container.querySelectorAll('textarea')).find((t) => (t.placeholder ?? '').includes(needle));
+  assert.ok(el, `a textarea with a placeholder containing "${needle}" exists`);
+  return el!;
 }
 
 function inputByPlaceholder(needle: string) {
@@ -397,4 +404,43 @@ test('the activity log can be searched and date-filtered', async () => {
   const body = text();
   assert.ok(body.includes(orderNo), 'the searched order appears in the log');
   assert.match(body, /All · \d+/, 'the event chips still render with counts');
+});
+
+
+test('completing a job asks for confirmation instead of submitting straight away', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+  await clickText('Complete job');
+
+  const body0 = text();
+  assert.match(body0, /Complete SS-2026-/, 'the completion sheet opened');
+
+  // Pressing the button with an empty "work done" must NOT submit, and must say
+  // why next to the button (it used to print the error off-screen at the top).
+  await clickText('Mark job as done');
+  assert.match(text(), /Not saved yet — please fix this:/, 'the failure is shown at the button');
+  assert.match(text(), /Describe the work done/);
+  assert.ok(!/Mark this job as done\?/.test(text()), 'nothing was submitted');
+
+  // Fill the work, then confirm.
+  await typeInto(textareaByPlaceholder('Chemical cleaned indoor unit'), 'Serviced the unit and tested cooling');
+  await clickText('Mark job as done');
+  const confirmText = text();
+  assert.match(confirmText, /Mark this job as done\?/, 'the confirmation panel appears');
+  assert.match(confirmText, /Final amount/, 'the panel summarises what will be sent');
+  assert.match(confirmText, /Serviced the unit and tested cooling/);
+  assert.match(confirmText, /Evidence.*no photos attached/s);
+
+  // Going back returns to the form, nothing submitted.
+  await clickText('Back to the form');
+  assert.ok(!/Mark this job as done\?/.test(text()), 'the panel closed');
+  assert.match(text(), /Work done/, 'the form is still there');
+
+  // Now really confirm.
+  await clickText('Mark job as done');
+  await clickText('Yes, mark it as done');
+  const after = text();
+  assert.match(after, /completed/i, 'the job is reported as completed');
+  assert.match(after, /wa\.me|WhatsApp/i, 'and the customer message is offered');
 });

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../state/AppState';
 import { MAX_ATTACHMENTS, computeFinalAmount, money, validateCompletion } from '../lib/domain';
@@ -30,6 +30,12 @@ export default function TechJobs() {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [doneNo, setDoneNo] = useState<string | null>(null);
+  // The report is written in the field, often one-handed — so the last tap asks
+  // "are you sure?" before anything is submitted, and a validation failure is
+  // shown next to the button that was pressed instead of at the top of a sheet
+  // the technician has already scrolled past.
+  const [confirming, setConfirming] = useState(false);
+  const workDoneRef = useRef<HTMLTextAreaElement>(null);
 
   // Work log: what a technician actually opens this screen to see. Search covers
   // the four things they look up in the field — order id, customer, address, date
@@ -132,6 +138,7 @@ export default function TechJobs() {
   const due = openOrder ? computeFinalAmount(openOrder.quoted_price, Number(extra || 0)) : 0;
 
   const reset = () => {
+    setConfirming(false);
     setWorkDone('');
     setExtra('0');
     setRemarks('');
@@ -165,7 +172,9 @@ export default function TechJobs() {
     setErrors([]);
   };
 
-  const submit = async () => {
+  /** Step 1: check the form. If it is wrong, say so where the technician is
+   *  looking (next to the button) and jump to the field that needs attention. */
+  const submit = () => {
     if (!openOrder) return;
     const found = validateCompletion(
       {
@@ -180,9 +189,19 @@ export default function TechJobs() {
       openOrder.quoted_price,
     );
     setErrors(found);
-    if (found.length) return;
+    if (found.length) {
+      workDoneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      workDoneRef.current?.focus();
+      return;
+    }
+    setConfirming(true);
+  };
 
+  /** Step 2: the confirmed submit. */
+  const confirmSubmit = async () => {
+    if (!openOrder) return;
     setBusy(true);
+    setErrors([]);
     const result = await completeJob(openOrder.order_no, {
       work_done: workDone.trim(),
       extra_charges: Number(extra || 0),
@@ -195,7 +214,13 @@ export default function TechJobs() {
     setBusy(false);
     if (result) {
       setDoneNo(openOrder.order_no);
+      setConfirming(false);
+      return;
     }
+    // Never leave the technician staring at a button that did nothing: keep the
+    // form, reopen it, and explain.
+    setConfirming(false);
+    setErrors(['This job could not be saved. Check your connection and try again — nothing was submitted.']);
   };
 
   const notification = doneNo ? data.notifications.find((n) => n.order_no === doneNo) : undefined;
@@ -378,6 +403,7 @@ export default function TechJobs() {
                 </div>
               </>
             ) : null}
+
             <button
               className="btn-ghost"
               onClick={() => {
@@ -397,22 +423,19 @@ export default function TechJobs() {
               <div className="text-xs text-slate-500">{openOrder.address}</div>
             </Card>
 
-            {errors.length ? (
-              <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-                <ul className="list-inside list-disc">
-                  {errors.map((e) => (
-                    <li key={e}>{e}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
             <Field label="Order ID">
               <input className="input" value={openOrder.order_no} disabled />
             </Field>
 
             <Field label="Work done" hint="Short and specific — what did you actually do?">
-              <textarea className="input" rows={3} value={workDone} onChange={(e) => setWorkDone(e.target.value)} placeholder="Chemical cleaned indoor unit, topped up gas, tested cooling…" />
+              <textarea
+                ref={workDoneRef}
+                className="input"
+                rows={3}
+                value={workDone}
+                onChange={(e) => setWorkDone(e.target.value)}
+                placeholder="Chemical cleaned indoor unit, topped up gas, tested cooling…"
+              />
             </Field>
 
             <div className="grid gap-x-4 md:grid-cols-2">
@@ -479,8 +502,22 @@ export default function TechJobs() {
               </button>
             ) : null}
 
+            {errors.length ? (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
+              >
+                <div className="font-semibold">Not saved yet — please fix this:</div>
+                <ul className="mt-1 list-inside list-disc">
+                  {errors.map((e) => (
+                    <li key={e}>{e}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-              <button className="btn-primary" disabled={busy} onClick={() => void submit()}>
+              <button className="btn-primary" disabled={busy} onClick={submit}>
                 {busy ? 'Saving…' : 'Mark job as done'}
               </button>
               <button
@@ -496,6 +533,66 @@ export default function TechJobs() {
                 Signed by {actor.name} · <TimeText iso={new Date().toISOString()} withDate={false} />
               </span>
             </div>
+
+            {/* The confirm step — an in-app panel, not window.confirm (which
+                looks alien in a field app and cannot show what is about to be
+                sent). Nothing leaves the device until the second tap. */}
+            {confirming ? (
+              <div className="absolute inset-0 z-20 flex flex-col justify-center bg-white px-5 py-8">
+                <div className="mx-auto w-full max-w-md space-y-4">
+                  <div className="flex flex-col items-center text-center">
+                    <span className="grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-3xl">✅</span>
+                    <h4 className="mt-3 text-lg font-bold text-slate-800">Mark this job as done?</h4>
+                    <p className="mt-1 text-sm text-slate-500">
+                      The office sees it as finished and the WhatsApp message for the customer is prepared. You can still
+                      change it from the office afterwards.
+                    </p>
+                  </div>
+
+                  <Card className="space-y-2 bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order</span>
+                      <span className="text-sm font-semibold text-slate-800">{openOrder.order_no}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</span>
+                      <span className="min-w-0 truncate text-sm text-slate-700">{openOrder.customer_name}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Work done</span>
+                      <span className="min-w-0 text-right text-sm text-slate-700">{workDone.trim() || '—'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Final amount</span>
+                      <span className="text-base font-bold text-slate-900">
+                        <MoneyText value={due} />
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment</span>
+                      <span className="text-sm text-slate-700">
+                        {paid === '' ? 'Not paid yet' : <><MoneyText value={Number(paid)} /> · {method}</>}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</span>
+                      <span className="text-sm text-slate-700">
+                        {files.length ? `${files.length} file${files.length === 1 ? '' : 's'}` : 'no photos attached'}
+                      </span>
+                    </div>
+                  </Card>
+
+                  <div className="flex flex-col gap-2">
+                    <button className="btn-primary w-full" disabled={busy} onClick={() => void confirmSubmit()}>
+                      {busy ? 'Saving…' : 'Yes, mark it as done'}
+                    </button>
+                    <button className="btn-secondary w-full" disabled={busy} onClick={() => setConfirming(false)}>
+                      Back to the form
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </>
         ) : (
           <EmptyState icon="🔍" title="Job not found" />

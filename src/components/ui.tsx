@@ -64,7 +64,7 @@ export function Modal({ open, title, onClose, children, wide = false }: { open: 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 backdrop-blur-sm md:items-center md:p-6">
-      <div className={`max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl md:rounded-3xl ${wide ? 'md:max-w-3xl' : 'md:max-w-xl'}`}>
+      <div className={`relative max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl md:rounded-3xl ${wide ? 'md:max-w-3xl' : 'md:max-w-xl'}`}>
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur">
           <h3 className="text-base font-bold text-slate-800">{title}</h3>
           <button type="button" className="btn-ghost !px-2 !py-1 text-xl leading-none" onClick={onClose} aria-label="Close">
