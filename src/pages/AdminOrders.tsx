@@ -3,11 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppState';
 import { SERVICE_TYPES, TECHNICIANS, type OrderStatus, type ServiceType, type Technician } from '../lib/types';
 import { money, nextOrderNo, validateOrderDraft, type OrderDraft } from '../lib/domain';
-import { Card, EmptyState, Field, MoneyText, SectionTitle, StatusPill, TimeText, Modal } from '../components/ui';
+import { Card, EmptyState, Field, MoneyText, SectionTitle, StatCard, StatusPill, TimeText, Modal } from '../components/ui';
 import DocumentImport from '../components/DocumentImport';
 import type { ExtractedFields } from '../lib/doc-fields';
 
 const STATUSES: OrderStatus[] = ['New', 'Assigned', 'In Progress', 'Job Done', 'Reviewed', 'Closed'];
+
+/** The date forms someone might search by: printed, ISO, d/m and dd/mm. */
+function dateStamp(iso: string): string {
+  const d = new Date(iso);
+  return [
+    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+    d.toISOString().slice(0, 10),
+    `${d.getDate()}/${d.getMonth() + 1}`,
+    `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
+  ].join(' ');
+}
 
 const blank: OrderDraft = {
   customer_name: '',
@@ -25,6 +36,8 @@ export default function AdminOrders() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<OrderStatus | 'All'>('All');
+  // Same search + filter pattern as the technician's My Jobs screen.
+  const [when, setWhen] = useState<'All' | 'Today' | 'This week' | 'This month'>('All');
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<OrderDraft>(blank);
   const [errors, setErrors] = useState<string[]>([]);
@@ -36,19 +49,42 @@ export default function AdminOrders() {
   const isAdmin = actor.role === 'Admin';
   const previewNo = useMemo(() => nextOrderNo(data.orders.map((o) => o.order_no), new Date().getFullYear()), [data.orders]);
 
+  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const today = dayStart(new Date());
+    const cutoff =
+      when === 'Today' ? today : when === 'This week' ? today - 7 * 86400000 : when === 'This month' ? today - 30 * 86400000 : null;
     return data.orders.filter((o) => {
+      if (cutoff !== null && dayStart(new Date(o.created_at)) < cutoff) return false;
       const matchesQuery =
         !q ||
-        [o.order_no, o.customer_name, o.phone, o.address, o.problem_description, o.assigned_technician ?? '']
+        [o.order_no, o.customer_name, o.phone, o.address, o.problem_description, o.assigned_technician ?? '', o.status, dateStamp(o.created_at)]
           .join(' ')
           .toLowerCase()
           .includes(q);
       const matchesStatus = status === 'All' || o.status === status;
       return matchesQuery && matchesStatus;
     });
-  }, [data.orders, query, status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.orders, query, status, when]);
+
+  /** What the office needs to act on: work nobody owns, work in flight, work
+   *  waiting on the manager, and how stale the oldest open job is. */
+  const workLog = useMemo(() => {
+    const open = data.orders.filter((o) => o.status !== 'Closed' && o.status !== 'Reviewed');
+    const unassigned = data.orders.filter((o) => !o.assigned_technician && o.status === 'New');
+    const waitingDays = open.length
+      ? Math.max(...open.map((o) => Math.floor((dayStart(new Date()) - dayStart(new Date(o.created_at))) / 86400000)))
+      : 0;
+    return {
+      unassigned: unassigned.length,
+      inProgress: data.orders.filter((o) => o.status === 'In Progress').length,
+      awaitingReview: data.orders.filter((o) => o.status === 'Job Done').length,
+      waitingDays,
+    };
+  }, [data.orders]);
 
   const counts = useMemo(() => {
     const map = new Map<OrderStatus, number>();
@@ -100,11 +136,30 @@ export default function AdminOrders() {
         </button>
       </div>
 
+      {/* Work log — what the office opens this screen to answer: what is
+          unowned, what is moving, what is stuck with the manager. */}
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <StatCard
+          label="Unassigned"
+          value={String(workLog.unassigned)}
+          sub="new orders, no technician"
+          tone={workLog.unassigned > 0 ? 'warn' : 'default'}
+        />
+        <StatCard label="In progress" value={String(workLog.inProgress)} sub="technicians on site" />
+        <StatCard
+          label="Awaiting review"
+          value={String(workLog.awaitingReview)}
+          sub="waiting on the manager"
+          tone={workLog.awaitingReview > 0 ? 'warn' : 'default'}
+        />
+        <StatCard label="Oldest open" value={workLog.waitingDays <= 0 ? 'new' : `${workLog.waitingDays}d`} sub="since the job came in" />
+      </div>
+
       <Card className="p-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-center">
           <input
             className="input md:flex-1"
-            placeholder="Search order no, customer, phone, address, technician…"
+            placeholder="Search order no, customer, phone, address, technician, date…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -122,6 +177,16 @@ export default function AdminOrders() {
                 onClick={() => setStatus(s)}
               >
                 {s} · {counts.get(s) ?? 0}
+              </button>
+            ))}
+            <span className="mx-1 h-5 w-px bg-slate-200" />
+            {(['All', 'Today', 'This week', 'This month'] as const).map((w) => (
+              <button
+                key={w}
+                className={`chip border ${when === w ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                onClick={() => setWhen(w)}
+              >
+                {w === 'All' ? 'Any date' : w}
               </button>
             ))}
           </div>

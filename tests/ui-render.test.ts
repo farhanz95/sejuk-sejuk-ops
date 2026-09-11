@@ -335,3 +335,66 @@ test('the To do / Done / Any date chips change the list', async () => {
   await clickText('All');
   assert.equal(jobCardCount(), mine.length, 'All shows every job assigned to Ali');
 });
+
+
+test('the admin order list opens with a management work log and date filters', async () => {
+  await mount('/orders');
+  const body = text();
+  assert.match(body, /Unassigned/, 'the office sees what nobody owns');
+  assert.match(body, /Awaiting review/, 'and what is stuck with the manager');
+  assert.match(body, /Oldest open/);
+  assert.match(body, /Any date/, 'date chips are present');
+
+  const { buildSeed } = await import('../src/lib/seed');
+  const seed = buildSeed();
+  assert.equal(jobCardCount(), seed.orders.length, 'the full order book is listed first');
+
+  // a plain-text search narrows the list (it matches any field, so "Ali" also
+  // catches names that contain those letters — that is intentional)
+  await typeInto(inputByPlaceholder('Search order no'), 'Ali');
+  const narrowed = jobCardCount();
+  assert.ok(narrowed > 0 && narrowed < seed.orders.length, `expected a narrower list, got ${narrowed}`);
+
+  // an order number is exact: exactly one card
+  await typeInto(inputByPlaceholder('Search order no'), seed.orders[0].order_no);
+  assert.equal(jobCardCount(), 1, 'searching an order number leaves exactly that order');
+});
+
+test('the manager review screen has a work log and search over the queue', async () => {
+  await mount('/review');
+  await selectRole('Manager:Manager');
+  const body = text();
+  assert.match(body, /Awaiting review/);
+  assert.match(body, /Over quote/);
+  assert.match(body, /AI flags/);
+  assert.match(body, /Waiting longest/);
+  assert.ok(inputByPlaceholder('Search order no'), 'the search box is present');
+
+  const { buildSeed } = await import('../src/lib/seed');
+  const seed = buildSeed();
+  const awaiting = seed.orders.filter((o) => o.status === 'Job Done');
+  assert.ok(awaiting.length > 0, 'the seed leaves jobs awaiting review');
+  assert.equal(jobCardCount(), awaiting.length, 'every awaiting job is listed at first');
+
+  const target = awaiting[0];
+  await typeInto(inputByPlaceholder('Search order no'), target.order_no);
+  assert.equal(jobCardCount(), 1, 'searching by order number leaves just that job');
+  assert.ok(text().includes(target.order_no));
+
+  await clickText('Clear');
+  assert.equal(jobCardCount(), awaiting.length, 'clearing the search restores the queue');
+});
+
+test('the activity log can be searched and date-filtered', async () => {
+  await mount('/activity');
+  assert.ok(inputByPlaceholder('Search order no'), 'the search box is present');
+  assert.match(text(), /Any date/);
+
+  const { buildSeed } = await import('../src/lib/seed');
+  const seed = buildSeed();
+  const orderNo = seed.orders[seed.orders.length - 1].order_no;
+  await typeInto(inputByPlaceholder('Search order no'), orderNo);
+  const body = text();
+  assert.ok(body.includes(orderNo), 'the searched order appears in the log');
+  assert.match(body, /All · \d+/, 'the event chips still render with counts');
+});

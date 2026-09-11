@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../state/AppState';
 import { MAX_ATTACHMENTS, computeFinalAmount, money, validateCompletion } from '../lib/domain';
 import type { PaymentMethod } from '../lib/types';
-import { Card, EmptyState, Field, Modal, MoneyText, SectionTitle, StatusPill, TimeText } from '../components/ui';
+import { Card, EmptyState, Field, Modal, MoneyText, SectionTitle, StatCard, StatusPill, TimeText } from '../components/ui';
 import { SupabaseRepo } from '../lib/repo';
 
 const METHODS: PaymentMethod[] = ['Cash', 'Bank Transfer', 'DuitNow QR', 'Card'];
@@ -13,27 +13,6 @@ interface PendingFile {
   mime: string;
   size: number;
   url: string;
-}
-
-/** One number in the technician's work log. */
-function WorkStat({
-  label,
-  value,
-  hint,
-  highlight,
-}: {
-  label: string;
-  value: string | number;
-  hint?: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div className={`rounded-2xl border p-3 ${highlight ? 'border-brand-300 bg-brand-50' : 'border-slate-200 bg-white'}`}>
-      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={`mt-0.5 text-2xl font-bold leading-none ${highlight ? 'text-brand-700' : 'text-slate-800'}`}>{value}</div>
-      {hint ? <div className="mt-1 text-[11px] text-slate-500">{hint}</div> : null}
-    </div>
-  );
 }
 
 export default function TechJobs() {
@@ -233,19 +212,19 @@ export default function TechJobs() {
       {/* Work log — what this screen is opened for: how much is still on me, how
           long one has been sitting, and what today has produced. */}
       <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-        <WorkStat
+        <StatCard
           label="To do"
-          value={workLog.openCount}
-          hint={workLog.inProgress ? `${workLog.inProgress} in progress` : 'assigned, not started'}
-          highlight={workLog.openCount > 0}
+          value={String(workLog.openCount)}
+          sub={workLog.inProgress ? `${workLog.inProgress} in progress` : 'assigned, not started'}
+          tone={workLog.openCount > 0 ? 'warn' : 'default'}
         />
-        <WorkStat
+        <StatCard
           label="Waiting longest"
           value={workLog.waitingDays <= 0 ? 'new' : `${workLog.waitingDays}d`}
-          hint="oldest job still open"
+          sub="oldest job still open"
         />
-        <WorkStat label="Done today" value={workLog.doneToday} hint="with a report" />
-        <WorkStat label="Done this week" value={workLog.doneWeek} hint={money(workLog.billedWeek)} />
+        <StatCard label="Done today" value={String(workLog.doneToday)} sub="with a report" />
+        <StatCard label="Done this week" value={String(workLog.doneWeek)} sub={money(workLog.billedWeek)} />
       </div>
 
       <Card className="mb-3 p-3">

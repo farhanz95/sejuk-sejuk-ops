@@ -1,17 +1,93 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppState';
-import { Card, EmptyState, MoneyText, SectionTitle, StatusPill, TimeText } from '../components/ui';
+import { Card, EmptyState, MoneyText, SectionTitle, StatCard, StatusPill, TimeText } from '../components/ui';
 import { money, overQuoteRatio, supervisorFlags } from '../lib/domain';
 
 export default function ManagerReview() {
   const { data, actor, review, close } = useApp();
   const navigate = useNavigate();
   const [tab, setTab] = useState<'queue' | 'reviewed' | 'flags'>('queue');
+  // Same search + date-filter pattern as My Jobs and the admin order list.
+  const [query, setQuery] = useState('');
+  const [when, setWhen] = useState<'All' | 'Today' | 'This week' | 'This month'>('All');
   const mayReview = actor.role === 'Manager';
 
-  const queue = useMemo(() => data.orders.filter((o) => o.status === 'Job Done'), [data.orders]);
-  const reviewed = useMemo(() => data.orders.filter((o) => o.status === 'Reviewed'), [data.orders]);
+  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+  /** Matches a job on the things a manager looks it up by: order no, customer,
+   *  technician, address, service or date. */
+  const matches = (orderNo: string) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const order = data.orders.find((o) => o.order_no === orderNo);
+    if (!order) return false;
+    const report = data.reports.find((r) => r.order_no === orderNo);
+    const stamp = (iso?: string) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return [
+        d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+        d.toISOString().slice(0, 10),
+        `${d.getDate()}/${d.getMonth() + 1}`,
+        `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
+      ].join(' ');
+    };
+    return [
+      order.order_no,
+      order.customer_name,
+      order.address,
+      order.service_type,
+      order.assigned_technician ?? '',
+      report?.technician_name ?? '',
+      stamp(report?.completed_at ?? order.updated_at),
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  };
+
+  const inRange = (iso?: string) => {
+    if (when === 'All') return true;
+    if (!iso) return false;
+    const today = dayStart(new Date());
+    const cutoff = when === 'Today' ? today : when === 'This week' ? today - 7 * 86400000 : today - 30 * 86400000;
+    return dayStart(new Date(iso)) >= cutoff;
+  };
+
+  const queue = useMemo(
+    () =>
+      data.orders.filter(
+        (o) => o.status === 'Job Done' && inRange(data.reports.find((r) => r.order_no === o.order_no)?.completed_at) && matches(o.order_no),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.orders, data.reports, query, when],
+  );
+  const reviewed = useMemo(
+    () => data.orders.filter((o) => o.status === 'Reviewed' && inRange(o.updated_at) && matches(o.order_no)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.orders, data.reports, query, when],
+  );
+
+  /** What a manager wants at a glance: how much is waiting, what looks wrong
+   *  with it, and how long the oldest one has been sitting. */
+  const workLog = useMemo(() => {
+    const awaiting = data.orders.filter((o) => o.status === 'Job Done');
+    const oldestDays = awaiting.length
+      ? Math.max(
+          ...awaiting.map((o) => {
+            const report = data.reports.find((r) => r.order_no === o.order_no);
+            const iso = report?.completed_at ?? o.updated_at;
+            return Math.floor((dayStart(new Date()) - dayStart(new Date(iso))) / 86400000);
+          }),
+        )
+      : 0;
+    const overQuote = awaiting.filter((o) => {
+      const report = data.reports.find((r) => r.order_no === o.order_no);
+      return report ? report.final_amount > o.quoted_price : false;
+    }).length;
+    return { awaiting: awaiting.length, oldestDays, overQuote };
+  }, [data.orders, data.reports]);
 
   const flagged = useMemo(
     () =>
@@ -36,6 +112,52 @@ export default function ManagerReview() {
         </p>
       </div>
 
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <StatCard
+          label="Awaiting review"
+          value={String(workLog.awaiting)}
+          sub="completed, not approved"
+          tone={workLog.awaiting > 0 ? 'warn' : 'default'}
+        />
+        <StatCard
+          label="Waiting longest"
+          value={workLog.oldestDays <= 0 ? 'today' : `${workLog.oldestDays}d`}
+          sub="since the job was finished"
+        />
+        <StatCard
+          label="Over quote"
+          value={String(workLog.overQuote)}
+          sub="final above the quote"
+          tone={workLog.overQuote > 0 ? 'warn' : 'default'}
+        />
+        <StatCard label="AI flags" value={String(flagged.length)} sub="supervisor anomalies" />
+      </div>
+
+      <Card className="p-3">
+        <input
+          className="input"
+          placeholder="Search order no, customer, technician, address, service, date…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {(['All', 'Today', 'This week', 'This month'] as const).map((w) => (
+            <button
+              key={w}
+              className={`chip border ${when === w ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600'}`}
+              onClick={() => setWhen(w)}
+            >
+              {w === 'All' ? 'Any date' : w}
+            </button>
+          ))}
+          {query || when !== 'All' ? (
+            <button className="btn-ghost !py-1 text-xs" onClick={() => { setQuery(''); setWhen('All'); }}>
+              Clear
+            </button>
+          ) : null}
+        </div>
+      </Card>
+
       <div className="flex flex-wrap gap-2">
         {(
           [
@@ -56,7 +178,15 @@ export default function ManagerReview() {
 
       {tab === 'queue' ? (
         queue.length === 0 ? (
-          <EmptyState icon="✅" title="Nothing waiting for review" hint="Complete a job from the Technician role to see it appear here." />
+          <EmptyState
+            icon="✅"
+            title={query || when !== 'All' ? 'No completed job matches that' : 'Nothing waiting for review'}
+            hint={
+              query || when !== 'All'
+                ? 'Try an order number (SS-2026-…), a customer or technician name, or widen the date filter to Any date.'
+                : 'Complete a job from the Technician role to see it appear here.'
+            }
+          />
         ) : (
           <div className="space-y-2">
             {queue.map((o) => {
@@ -117,7 +247,10 @@ export default function ManagerReview() {
 
       {tab === 'reviewed' ? (
         reviewed.length === 0 ? (
-          <EmptyState icon="📦" title="No reviewed jobs yet" />
+          <EmptyState
+            icon="📦"
+            title={query || when !== 'All' ? 'No approved job matches that' : 'No reviewed jobs yet'}
+          />
         ) : (
           <div className="space-y-2">
             {reviewed.slice(0, 30).map((o) => (

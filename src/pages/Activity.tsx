@@ -22,11 +22,39 @@ export default function Activity() {
   const { data } = useApp();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<EventType | 'all'>('all');
+  // Same search + date-filter pattern as the other screens: the audit log grows
+  // all day, and "who touched SS-2026-0042?" is the usual question.
+  const [query, setQuery] = useState('');
+  const [when, setWhen] = useState<'All' | 'Today' | 'This week' | 'This month'>('All');
 
   const events = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
+    const cutoff =
+      when === 'Today' ? today : when === 'This week' ? today - 7 * 86400000 : when === 'This month' ? today - 30 * 86400000 : null;
     const sorted = [...data.events].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
-    return (filter === 'all' ? sorted : sorted.filter((e) => e.event_type === filter)).slice(0, 150);
-  }, [data.events, filter]);
+    return sorted
+      .filter((e) => filter === 'all' || e.event_type === filter)
+      .filter((e) => {
+        if (cutoff === null) return true;
+        const d = new Date(e.created_at);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() >= cutoff;
+      })
+      .filter((e) => {
+        if (!q) return true;
+        const d = new Date(e.created_at);
+        const stamp = [
+          d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+          d.toISOString().slice(0, 10),
+          `${d.getDate()}/${d.getMonth() + 1}`,
+        ].join(' ');
+        return [e.order_no, e.detail, e.actor_name ?? '', e.actor_role, e.event_type, stamp]
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      })
+      .slice(0, 150);
+  }, [data.events, filter, query, when]);
 
   const notifications = data.notifications.slice(0, 20);
 
@@ -40,7 +68,16 @@ export default function Activity() {
       </div>
 
       <Card className="p-3">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+          <input
+            className="input !pl-9"
+            placeholder="Search order no, what happened, who did it, date…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (
             <button
               key={f}
@@ -50,11 +87,25 @@ export default function Activity() {
               {f === 'all' ? `All · ${data.events.length}` : `${EVENT_ICON[f as EventType]} ${f}`}
             </button>
           ))}
+          <span className="mx-1 h-5 w-px bg-slate-200" />
+          {(['All', 'Today', 'This week', 'This month'] as const).map((w) => (
+            <button
+              key={w}
+              className={`chip border ${when === w ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600'}`}
+              onClick={() => setWhen(w)}
+            >
+              {w === 'All' ? 'Any date' : w}
+            </button>
+          ))}
         </div>
       </Card>
 
       {events.length === 0 ? (
-        <EmptyState icon="🕘" title="No events for this filter" />
+        <EmptyState
+          icon="🕘"
+          title={query ? 'No event matches that search' : 'No events for this filter'}
+          hint={query ? 'Try an order number (SS-2026-…), a person, or a word from the event (assigned, closed…).' : undefined}
+        />
       ) : (
         <Card className="divide-y divide-slate-100">
           {events.map((e) => (
