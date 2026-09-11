@@ -221,47 +221,71 @@ export default function AdminOrders() {
         <div className="space-y-2">
           {filtered.slice(0, 60).map((o) => (
             <Card key={o.order_no} className="p-4 transition hover:shadow-md">
-              {/* Two columns that actually balance: the identity block flexes and
-                  truncates, the amount stays pinned right. Previously the left
-                  block took the full width, so the right block wrapped onto its
-                  own line and floated — leaving a large empty area on a phone. */}
-              <div className="flex items-start justify-between gap-3">
-                <button className="min-w-0 flex-1 text-left" onClick={() => navigate(`/orders/${o.order_no}`)}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-slate-800">{o.order_no}</span>
-                    <StatusPill status={o.status} />
-                  </div>
-                  <div className="mt-1 truncate text-sm text-slate-600">
-                    {o.customer_name} · {o.phone}
-                  </div>
-                  <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">{o.problem_description}</div>
-                </button>
-                <div className="shrink-0 text-right">
-                  <div className="font-semibold text-slate-800">
-                    <MoneyText value={o.quoted_price} />
-                  </div>
-                  <div className="text-[11px] uppercase tracking-wide text-slate-400">{o.service_type}</div>
-                </div>
-              </div>
-
-              {/* Meta line: what/when/who, aligned with the card, not floating. */}
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                <span>
-                  <TimeText iso={o.created_at} />
-                </span>
-                <span>{o.assigned_technician ? `👷 ${o.assigned_technician}` : '— unassigned'}</span>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button className="btn-secondary !py-1.5 text-xs" onClick={() => navigate(`/orders/${o.order_no}`)}>
-                  Open
-                </button>
-                {isAdmin ? (
-                  <button className="btn-secondary !py-1.5 text-xs" onClick={() => setAssigning(o.order_no)}>
-                    {o.assigned_technician ? 'Reassign' : 'Assign technician'}
+              {/* One row of facts on a wide screen, stacked on a phone. A full-width
+                  single column left a big empty middle on desktop, so from `md` the
+                  same facts sit in named columns and fill the width:
+                  order + status | customer + problem | when + who | amount | actions. */}
+              {/* Phones: order + amount share the top line, then customer, then the
+                  meta line, then the buttons — the shape that looked right on a phone.
+                  Desktop: `md:contents` dissolves the wrapper so each fact becomes its
+                  own column and the row fills the width instead of leaving a dead
+                  middle. Order numbers put them in reading order (when/who before the
+                  amount, even though the amount sits top-right on a phone). */}
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+                <div className="flex items-start justify-between gap-3 md:contents">
+                  <button
+                    className="min-w-0 text-left md:order-1 md:w-[170px] md:shrink-0"
+                    onClick={() => navigate(`/orders/${o.order_no}`)}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-bold text-slate-800">{o.order_no}</span>
+                      <StatusPill status={o.status} />
+                    </div>
+                    <div className="mt-0.5 hidden text-[11px] uppercase tracking-wide text-slate-400 md:block">
+                      {o.service_type}
+                    </div>
                   </button>
-                ) : null}
-                {o.status === 'Job Done' ? <span className="chip bg-emerald-50 text-emerald-700">WhatsApp prepared</span> : null}
+
+                  <button
+                    className="min-w-0 flex-1 text-left md:order-2"
+                    onClick={() => navigate(`/orders/${o.order_no}`)}
+                  >
+                    <div className="truncate text-sm text-slate-600">
+                      {o.customer_name} · {o.phone}
+                    </div>
+                    <div className="mt-0.5 line-clamp-2 text-xs text-slate-500 md:line-clamp-1">
+                      {o.problem_description}
+                    </div>
+                  </button>
+
+                  <div className="shrink-0 text-right md:order-4 md:w-[104px]">
+                    <div className="font-semibold text-slate-800">
+                      <MoneyText value={o.quoted_price} />
+                    </div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-400 md:hidden">{o.service_type}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-x-3 text-[11px] text-slate-500 md:order-3 md:w-[178px] md:shrink-0 md:flex-col md:items-start md:gap-0.5">
+                  <span className="whitespace-nowrap">
+                    <TimeText iso={o.created_at} />
+                  </span>
+                  <span className="whitespace-nowrap">
+                    {o.assigned_technician ? `👷 ${o.assigned_technician}` : '— unassigned'}
+                  </span>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap items-center gap-2 md:order-5 md:justify-end">
+                  <button className="btn-secondary !py-1.5 text-xs" onClick={() => navigate(`/orders/${o.order_no}`)}>
+                    Open
+                  </button>
+                  {isAdmin ? (
+                    <button className="btn-secondary !py-1.5 text-xs" onClick={() => setAssigning(o.order_no)}>
+                      {o.assigned_technician ? 'Reassign' : 'Assign technician'}
+                    </button>
+                  ) : null}
+                  {o.status === 'Job Done' ? <span className="chip bg-emerald-50 text-emerald-700">WhatsApp prepared</span> : null}
+                </div>
               </div>
             </Card>
           ))}

@@ -3,6 +3,58 @@ import { useAuth, type DirectoryEntry } from '../state/AuthState';
 import { TECHNICIANS, type Role, type Technician } from '../lib/types';
 import { phoneProblem } from '../lib/domain';
 import { Card, EmptyState, Field, SectionTitle } from '../components/ui';
+import { isDemoMode } from '../lib/demoMode';
+
+/**
+ * Demo mode runs on the seeded dataset with no account, so it must not write to
+ * the real whitelist — a reviewer poking at the screen would otherwise add rows to
+ * the live table. The screen still shows what the feature looks like, on sample
+ * entries, and says so.
+ */
+const SAMPLE_PEOPLE: DirectoryEntry[] = [
+  {
+    id: 'demo-1',
+    email: 'ali@sejuksejuk.example',
+    phone: '0123456789',
+    display_name: 'Ali bin Ahmad',
+    role: 'Technician',
+    technician_name: 'Ali',
+    pin_set_at: '2026-09-10T09:12:00Z',
+    locked_until: null,
+    revoked_at: null,
+    last_login_at: '2026-09-11T08:02:00Z',
+    created_by: 'admin',
+    created_at: '2026-09-09T02:00:00Z',
+  },
+  {
+    id: 'demo-2',
+    email: null,
+    phone: '0198765432',
+    display_name: 'Suresh a/l Kumar',
+    role: 'Technician',
+    technician_name: 'John',
+    pin_set_at: null,
+    locked_until: null,
+    revoked_at: null,
+    last_login_at: null,
+    created_by: 'admin',
+    created_at: '2026-09-10T04:30:00Z',
+  },
+  {
+    id: 'demo-3',
+    email: 'manager@sejuksejuk.example',
+    phone: null,
+    display_name: 'Noraini binti Hassan',
+    role: 'Manager',
+    technician_name: null,
+    pin_set_at: null,
+    locked_until: null,
+    revoked_at: '2026-09-11T01:00:00Z',
+    last_login_at: '2026-09-08T06:45:00Z',
+    created_by: 'admin',
+    created_at: '2026-09-05T01:00:00Z',
+  },
+];
 
 /**
  * Admin → Staff access (the whitelist).
@@ -26,19 +78,25 @@ export default function StaffAccessPage() {
   const [role, setRole] = useState<Role>('Technician');
   const [technician, setTechnician] = useState<Technician | ''>('');
 
+  const demo = isDemoMode();
+
   const refresh = useCallback(async () => {
+    if (demo) {
+      setPeople(SAMPLE_PEOPLE);
+      return;
+    }
     try {
       setPeople(await listDirectory());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the staff list.');
     }
-  }, [listDirectory]);
+  }, [demo, listDirectory]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  if (!configured) {
+  if (!configured && !demo) {
     return (
       <EmptyState
         icon="👥"
@@ -60,6 +118,13 @@ export default function StaffAccessPage() {
           they choose the first time). Anyone not listed here is refused, and revoking takes effect on their next sign-in.
         </p>
       </div>
+
+      {demo ? (
+        <p className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+          <strong>Demo mode:</strong> this is sample data, and nothing here is saved — the live list is stored in
+          Supabase. In the real build, adding a person is what lets them sign in.
+        </p>
+      ) : null}
 
       <Card className="space-y-1 p-4">
         <SectionTitle>Add a person</SectionTitle>
@@ -100,9 +165,13 @@ export default function StaffAccessPage() {
           ) : null}
         </div>
         <button
-          className="btn-primary"
+          className={`btn-primary ${demo ? 'opacity-60' : ''}`}
           disabled={busy || !canAdd}
           onClick={async () => {
+            if (demo) {
+              setError('Demo mode does not save anything — this list is read-only here.');
+              return;
+            }
             setBusy(true);
             setError(null);
             setFlash(null);
@@ -157,18 +226,21 @@ export default function StaffAccessPage() {
                     <button
                       className="btn-secondary !py-1.5 text-xs"
                       title="Forget the PIN so the person chooses a new one at next sign-in"
-                      onClick={() => void resetPin(person.id).then(refresh)}
+                      onClick={() => (demo ? setError('Demo mode does not save anything.') : void resetPin(person.id).then(refresh))}
                     >
                       Reset PIN
                     </button>
                   ) : null}
                   <button
                     className="btn-secondary !py-1.5 text-xs"
-                    onClick={() => void revokePerson(person.id, !revoked).then(refresh)}
+                    onClick={() => (demo ? setError('Demo mode does not save anything.') : void revokePerson(person.id, !revoked).then(refresh))}
                   >
                     {revoked ? 'Allow again' : 'Revoke'}
                   </button>
-                  <button className="btn-ghost !py-1.5 text-xs" onClick={() => void deletePerson(person.id).then(refresh)}>
+                  <button
+                    className="btn-ghost !py-1.5 text-xs"
+                    onClick={() => (demo ? setError('Demo mode does not save anything.') : void deletePerson(person.id).then(refresh))}
+                  >
                     Remove
                   </button>
                 </div>

@@ -718,6 +718,38 @@ test('the phone step has a small way back, and no sign-out before signing in', a
   assert.ok(/Login using email/.test(screen.text()), 'back returns to the two choices');
 });
 
+test('an admin can actually open the Staff access tab (the guard used to bounce it)', async () => {
+  // Reported: "the staff access tab I cant seem to access from admin". Cause: the
+  // route moved to /staff but ROLE_SCREENS still listed the old /access-keys, so
+  // RequireRole answered every click by navigating back to /orders — the tab looked
+  // selected while the order list stayed on screen.
+  // The nav tab only appears when Firebase/Supabase env is configured, which it is
+  // not in this suite — so the route is exercised directly, after signing in as an
+  // admin (the guard reads the persisted role).
+  const { canOpen } = await import('../src/components/RequireRole');
+  assert.ok(canOpen('Admin', '/staff'), 'an admin may open the staff screen');
+  assert.ok(!canOpen('Manager', '/staff'), 'a manager may not');
+  assert.ok(!canOpen('Technician', '/staff'), 'a technician may not');
+
+  await mount('/');
+  await selectRole('Admin');
+  await mount('/staff', { keepRole: true });
+  const body = text();
+  assert.ok(!/Page not found/.test(body), 'not the 404 page');
+  assert.ok(!/Service orders/.test(body), `the order list did not come back, got: ${body.slice(0, 140)}`);
+});
+
+test('demo mode shows the staff list without writing to the live whitelist', async () => {
+  await mount('/');
+  await selectRole('Admin');
+  dom.window.localStorage.setItem('ss_demo_mode', '1');
+  await mount('/staff', { keepRole: true });
+  const body = text();
+  assert.match(body, /sample data, and nothing here is saved/i, 'the screen says it is read-only');
+  assert.match(body, /Ali bin Ahmad/, 'sample entries are shown so the feature is reviewable');
+  dom.window.localStorage.removeItem('ss_demo_mode');
+});
+
 test('the staff list is the way people are invited (no key screen)', async () => {
   const { default: StaffAccessPage } = await import('../src/pages/StaffAccessPage');
   dom.window.localStorage.clear();

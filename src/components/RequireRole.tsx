@@ -14,7 +14,7 @@ import type { Role } from '../lib/types';
 /** Screens a role may open, mirroring the navigation it is shown. */
 export const ROLE_SCREENS: Record<Role, string[]> = {
   Technician: ['/jobs', '/my-activity'],
-  Admin: ['/orders', '/dashboard', '/ai', '/activity'],
+  Admin: ['/orders', '/dashboard', '/ai', '/activity', '/staff'],
   Manager: ['/review', '/orders', '/dashboard', '/ai', '/activity'],
 };
 

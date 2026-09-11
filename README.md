@@ -534,6 +534,41 @@ runs, the login screen says so plainly instead of failing silently. The old
 key-based screens (`SignInPage`, `JoinWithKeyPage`, `AccessKeysPage`) were deleted
 rather than left behind as dead code.
 
+#### Wide screens: one row of facts instead of a dead middle (2026-09-11)
+
+On a desktop the order card was a single stacked column inside a 1120px card, so
+the customer's name sat at the left, the amount at the right, and ~700px of nothing
+in between. From `md` up, the same facts now sit in named columns — order + status,
+customer + problem, when + who, amount, actions — and the row accounts for **91%**
+of the card width with a largest gap of **16px**. Phones keep the shape that already
+read well (order + amount on the top line, customer below, meta line, buttons):
+`md:contents` dissolves the phone wrapper on wide screens and CSS `order` puts the
+blocks in reading order, so there is one markup, not two.
+
+#### The Staff access tab that could not be opened (2026-09-11)
+
+Reported: *"the staff access tab I can't seem to access from admin"* — the tab looked
+selected while the order list stayed on screen. The route moved to `/staff` but
+`ROLE_SCREENS` still listed the old `/access-keys`, so `RequireRole` answered every
+click by navigating back to `/orders`. The guard now lists `/staff`, and two tests
+pin the behaviour (`canOpen('Admin', '/staff')` true; Manager and Technician false).
+
+In demo mode the screen shows **sample** entries and says they are not saved — a
+reviewer poking at it must not write rows into the live whitelist.
+
+#### Bootstrapping the first admin
+
+The whitelist decides who may sign in, which raises the obvious question: how does
+the first admin get in? Once, in Supabase → Table Editor → `staff_directory`:
+
+| column | value |
+| --- | --- |
+| `email` | your Google address |
+| `display_name` | your name |
+| `role` | `Admin` |
+
+Sign in with Google, then add everyone else from **👥 Staff access**.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,
