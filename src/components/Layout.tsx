@@ -185,11 +185,29 @@ export default function Layout() {
               key={n.to}
               to={n.to}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold ${isActive ? 'text-brand-700' : 'text-slate-500'}`
+                `relative flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold transition ${
+                  isActive ? 'text-brand-700' : 'text-slate-500 hover:text-slate-700'
+                }`
               }
             >
-              <span className="text-lg leading-none">{n.icon}</span>
-              {n.label}
+              {({ isActive }) => (
+                <>
+                  {/* A colour shift alone was too subtle on a phone, so the active
+                      tab also gets a marker bar and a filled icon pill. */}
+                  <span
+                    aria-hidden
+                    className={`absolute inset-x-4 top-0 h-0.5 rounded-full ${isActive ? 'bg-brand-600' : 'bg-transparent'}`}
+                  />
+                  <span
+                    className={`grid h-6 w-10 place-items-center rounded-full text-lg leading-none transition ${
+                      isActive ? 'bg-brand-100' : ''
+                    }`}
+                  >
+                    {n.icon}
+                  </span>
+                  <span className={isActive ? 'font-bold' : ''}>{n.label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </div>

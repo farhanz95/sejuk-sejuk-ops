@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth';
 import { firebaseAuth, firebaseConfigured, googleProvider, supabase, supabaseConfigured } from '../lib/firebase';
 import type { Role, Technician } from '../lib/types';
+import { normalisePhone } from '../lib/domain';
 
 /**
  * Staff identity.
@@ -22,6 +23,9 @@ export interface StaffProfile {
   photo_url: string | null;
   role: Role;
   technician_name: string | null;
+  /** captured for technicians who join without an email address */
+  phone: string | null;
+  auth_provider: 'google' | 'anonymous';
   created_at: string;
   last_seen_at: string;
 }
@@ -57,9 +61,11 @@ interface AuthValue {
   profile: StaffProfile | null;
   loadingProfile: boolean;
   signInWithGoogle: () => Promise<void>;
+  /** For technicians with no email: an account on this device, authorised by the key. */
+  signInWithoutEmail: () => Promise<void>;
   signOutStaff: () => Promise<void>;
   /** First-time join: claims an admin-issued key and records the account. */
-  claimKey: (input: { code: string; technician: Technician | ''; displayName: string }) => Promise<ClaimResult>;
+  claimKey: (input: { code: string; technician: Technician | ''; displayName: string; phone?: string }) => Promise<ClaimResult>;
   /** Admin: manage the keys. */
   listKeys: () => Promise<JoinKey[]>;
   createKey: (input: { role: Role; technician: Technician | ''; label: string; expiresInDays: number | null }) => Promise<JoinKey>;
@@ -147,6 +153,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /**
+   * No-email path: Firebase gives this device its own account, and the admin's
+   * key is what actually authorises the person. It is a device-bound account, so
+   * the phone number is recorded (and the office can see who is on which device).
+   */
+  const signInWithoutEmail = useCallback(async () => {
+    if (!firebaseAuth) throw new Error('Firebase is not configured in this build.');
+    await signInAnonymously(firebaseAuth);
+  }, []);
+
   const signOutStaff = useCallback(async () => {
     if (!firebaseAuth) return;
     await signOut(firebaseAuth);
@@ -154,15 +170,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const claimKey = useCallback<AuthValue['claimKey']>(
-    async ({ code, technician, displayName }) => {
-      if (!supabase || !user) return { ok: false, reason: 'Sign in with Google first, then enter the key.' };
-      const { data, error } = await supabase.rpc('claim_join_key', {
+    async ({ code, technician, displayName, phone }) => {
+      if (!supabase || !user) return { ok: false, reason: 'Sign in first (Google, or without an email), then enter the key.' };
+      const args = {
         p_code: code.trim().toUpperCase(),
         p_uid: user.uid,
         p_email: user.email,
         p_display_name: displayName || user.displayName || '',
         p_technician: technician || null,
+      };
+      // The phone/provider columns arrived in a later migration. If the database
+      // has not been updated yet, PostgREST cannot resolve the new signature —
+      // so fall back to the original one rather than failing the registration.
+      let { data, error } = await supabase.rpc('claim_join_key', {
+        ...args,
+        p_phone: phone ? normalisePhone(phone) : null,
+        p_provider: user.isAnonymous ? 'anonymous' : 'google',
       });
+      if (error && /PGRST202|schema cache|does not exist/i.test(error.message)) {
+        ({ data, error } = await supabase.rpc('claim_join_key', args));
+      }
       if (error) return { ok: false, reason: error.message };
       const row = Array.isArray(data) ? data[0] : data;
       if (!row?.ok) return { ok: false, reason: row?.reason ?? 'That key could not be used.' };
@@ -243,6 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       loadingProfile,
       signInWithGoogle,
+      signInWithoutEmail,
       signOutStaff,
       claimKey,
       listKeys,
@@ -252,7 +280,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       listStaff,
       refreshProfile,
     }),
-    [authReady, user, profile, loadingProfile, signInWithGoogle, signOutStaff, claimKey, listKeys, createKey, revokeKey, deleteKey, listStaff, refreshProfile],
+    [authReady, user, profile, loadingProfile, signInWithGoogle, signInWithoutEmail, signOutStaff, claimKey, listKeys, createKey, revokeKey, deleteKey, listStaff, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

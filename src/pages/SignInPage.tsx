@@ -15,7 +15,7 @@ import { enterDemoMode } from '../lib/demoMode';
  * hiding that would only make it harder to grade.
  */
 export default function SignInPage() {
-  const { signInWithGoogle, configured } = useAuth();
+  const { signInWithGoogle, signInWithoutEmail, configured } = useAuth();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +60,36 @@ export default function SignInPage() {
         <Link className="btn-secondary w-full text-center" to="/join">
           I have an access key
         </Link>
+
+        {/* Not every technician has an email address. This path gives the device
+            its own account and still requires the admin's key, so no Google
+            account is needed. */}
+        <div className="flex items-center gap-2 py-1">
+          <span className="h-px flex-1 bg-slate-200" />
+          <span className="text-[11px] uppercase tracking-wide text-slate-400">or</span>
+          <span className="h-px flex-1 bg-slate-200" />
+        </div>
+        <button
+          className="btn-secondary w-full"
+          disabled={busy || !configured}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await signInWithoutEmail();
+              navigate('/join');
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Could not continue without an email.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          No email? Continue with your phone number
+        </button>
+        <p className="text-center text-[11px] text-slate-500">
+          You will enter the access key your admin gave you (WhatsApp/SMS). Sign-in stays on this phone afterwards.
+        </p>
 
         {!configured ? (
           <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">

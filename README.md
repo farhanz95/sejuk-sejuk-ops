@@ -447,6 +447,35 @@ them again (14/14 passing).
   reviewer can try a real account afterwards (previously the flag hid the sign-in
   screen for good, with no way back).
 
+#### No-email technicians, and a modal bug worth remembering (2026-09-11)
+
+- **Joining without an email.** Not every field technician has a Google account,
+  so the sign-in screen now offers "No email? Continue with your phone number":
+  Firebase anonymous sign-in gives the device an account, the admin's key is
+  still what authorises the person, and their phone number is recorded as their
+  identity (`staff_accounts.phone` / `auth_provider`). Honest limitation, also in
+  §7: a real SMS one-time code needs a paid SMS provider (Firebase Phone Auth on
+  Blaze, or Twilio), so no code is texted — the admin hands over the joining key
+  instead.
+- **Delivering the key is part of the admin screen.** Enter who it is for and
+  Access keys offers WhatsApp (`wa.me`), SMS (`sms:` — the body separator differs
+  on iOS, so both forms are handled) or email (`mailto:`), with the message
+  written for them: open the portal, tap "I have an access key", enter the code.
+- **"I have an access key" was dead.** The sign-in screen linked to `/join`, but
+  the auth gate answered *every* path with the sign-in screen, so the link looked
+  broken. The gate now routes `/join` to the join screen.
+- **A dialog closed itself when you touched it.** Reported on every device:
+  tapping the sample-data button or "Mark job as done" inside the completion
+  sheet shut the sheet. Cause: `Modal` used the caller's inline `onClose` as an
+  effect dependency, so *every* render re-registered the modal's history entry —
+  and the cleanup walks that entry off with `history.back()`, which fires
+  popstate and closes the dialog. The handler is now held in a ref, so the
+  registration is stable while the dialog is open.
+- **The tab bar marks where you are.** The bottom bar's active tab was only a
+  colour shift, which is easy to miss on a phone: it now also gets a marker bar,
+  a filled icon pill and a bold label (and `aria-current="page"` for screen
+  readers).
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

@@ -37,6 +37,8 @@ export default function AccessKeysPage() {
   const [error, setError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<JoinKey | null>(null);
   const [copied, setCopied] = useState(false);
+  // Who the key is going to: a phone number (WhatsApp/SMS) or an email address.
+  const [recipient, setRecipient] = useState('');
 
   const refresh = useCallback(async () => {
     try {
@@ -61,14 +63,26 @@ export default function AccessKeysPage() {
     );
   }
 
-  const whatsappText = (key: JoinKey) =>
-    encodeURIComponent(
-      `Sejuk Sejuk Service portal — your one-time access key is ${key.code ?? '(the code is shown only once, when it is created)'}\n\n` +
-        `1. Open the portal and tap "Continue with Google"\n` +
-        `2. Then "I have an access key" and enter the code (team: ${key.technician_name ?? 'any'})\n` +
-        (key.expires_at ? `Expires ${new Date(key.expires_at).toLocaleDateString('en-GB')}\n` : '') +
-        `After this once, you just tap Google to sign in.`,
-    );
+  /** The message a technician receives — the same text for WhatsApp, SMS or email. */
+  const messageFor = (key: JoinKey) =>
+    `Sejuk Sejuk Service portal — your one-time access key is ${key.code ?? '________________'}\n\n` +
+    `1. Open ${typeof window !== 'undefined' ? window.location.origin : 'the portal'}\n` +
+    `2. Tap "I have an access key" (or "No email? Continue with your phone number")\n` +
+    `3. Enter the code (team: ${key.technician_name ?? 'any'}), then your name and phone number\n` +
+    (key.expires_at ? `Please do this before ${new Date(key.expires_at).toLocaleDateString('en-GB')} — the key expires.\n` : '') +
+    `After this once, the portal remembers this phone.`;
+
+  const digitsOnly = recipient.replace(/[^0-9+]/g, '').replace(/^\+/, '');
+  const whatsappHref = (key: JoinKey) =>
+    `https://wa.me/${digitsOnly}?text=${encodeURIComponent(messageFor(key))}`;
+  // sms: works on both iOS and Android; the body separator differs, so offer both.
+  const smsHref = (key: JoinKey) =>
+    /iPhone|iPad|iPod/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')
+      ? `sms:${digitsOnly}&body=${encodeURIComponent(messageFor(key))}`
+      : `sms:${digitsOnly}?body=${encodeURIComponent(messageFor(key))}`;
+  const mailHref = (key: JoinKey) =>
+    `mailto:${recipient}?subject=${encodeURIComponent('Sejuk Sejuk Service — your access key')}&body=${encodeURIComponent(messageFor(key))}`;
+  const looksLikeEmail = recipient.includes('@');
 
   return (
     <div className="space-y-4">
@@ -110,6 +124,17 @@ export default function AccessKeysPage() {
           </Field>
           <Field label="Expires in (days)" hint="Blank or 0 = never expires">
             <input className="input" inputMode="numeric" value={expiresInDays} onChange={(e) => setExpiresInDays(e.target.value)} />
+          </Field>
+          <Field
+            label="Send the key to"
+            hint="Phone number for WhatsApp/SMS, or an email address — for a technician with no email, their phone"
+          >
+            <input
+              className="input"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              placeholder="012-345 6789 or name@example.com"
+            />
           </Field>
         </div>
         <button
@@ -159,14 +184,20 @@ export default function AccessKeysPage() {
             >
               {copied ? 'Copied ✓' : 'Copy'}
             </button>
-            <a
-              className="btn-secondary !py-2 text-xs"
-              target="_blank"
-              rel="noreferrer"
-              href={`https://wa.me/?text=${whatsappText(fresh)}`}
-            >
-              Send on WhatsApp →
-            </a>
+            {looksLikeEmail ? (
+              <a className="btn-secondary !py-2 text-xs" href={mailHref(fresh)}>
+                ✉️ Send by email
+              </a>
+            ) : (
+              <>
+                <a className="btn-secondary !py-2 text-xs" target="_blank" rel="noreferrer" href={whatsappHref(fresh)}>
+                  💬 WhatsApp
+                </a>
+                <a className="btn-secondary !py-2 text-xs" href={smsHref(fresh)}>
+                  📱 SMS
+                </a>
+              </>
+            )}
             <button className="btn-ghost !py-2 text-xs" onClick={() => setFresh(null)}>
               Hide
             </button>
@@ -177,8 +208,12 @@ export default function AccessKeysPage() {
             {fresh.expires_at ? `expires ${new Date(fresh.expires_at).toLocaleDateString('en-GB')}` : 'no expiry'}
           </p>
           <p className="text-xs font-medium text-emerald-900">
-            Copy it now — the portal keeps only a one-way hash, so this code cannot be shown again. Create a new key if it
-            is lost.
+            Copy or send it now — the portal keeps only a one-way hash, so this code cannot be shown again. Create a new key
+            if it is lost.
+          </p>
+          <p className="text-xs text-emerald-800">
+            A technician without an email can still join: they tap “No email? Continue with your phone number”, then enter
+            this key.
           </p>
         </Card>
       ) : null}
@@ -212,14 +247,22 @@ export default function AccessKeysPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <a
-                    className="btn-secondary !py-1.5 text-xs"
-                    target="_blank"
-                    rel="noreferrer"
-                    href={`https://wa.me/?text=${whatsappText(key)}`}
-                  >
-                    WhatsApp
-                  </a>
+                  {recipient ? (
+                    looksLikeEmail ? (
+                      <a className="btn-secondary !py-1.5 text-xs" href={mailHref(key)}>
+                        ✉️ Email
+                      </a>
+                    ) : (
+                      <>
+                        <a className="btn-secondary !py-1.5 text-xs" target="_blank" rel="noreferrer" href={whatsappHref(key)}>
+                          💬 WhatsApp
+                        </a>
+                        <a className="btn-secondary !py-1.5 text-xs" href={smsHref(key)}>
+                          📱 SMS
+                        </a>
+                      </>
+                    )
+                  ) : null}
                   {!key.revoked_at && !key.used_at ? (
                     <button className="btn-secondary !py-1.5 text-xs" onClick={() => void revokeKey(key.code_hash).then(refresh)}>
                       Revoke

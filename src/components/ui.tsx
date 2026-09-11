@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { OrderStatus } from '../lib/types';
 import { useApp } from '../state/AppState';
 import { registerModal } from '../lib/modalStack';
@@ -187,22 +187,33 @@ export function EmptyState({ title, hint, icon = '📭' }: { title: string; hint
 }
 
 export function Modal({ open, title, onClose, children, wide = false }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
-  // Android/phone back button: while this modal is open it owns the gesture, so
-  // back closes the dialog instead of leaving the screen (see lib/modalStack).
+  /**
+   * `onClose` is an inline arrow in almost every caller, so its identity changes
+   * on every render. Using it as an effect dependency re-registered the modal —
+   * and the cleanup walks the history entry off with history.back(), which fires
+   * popstate and CLOSED THE DIALOG. The symptom was that any state change inside
+   * a modal (typing, the sample-data button, pressing Mark job as done) shut it.
+   * Holding it in a ref keeps the registration stable for as long as it is open.
+   */
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
-    return registerModal(onClose);
-  }, [open, onClose]);
+    // Android/phone back button: while this modal is open it owns the gesture, so
+    // back closes the dialog (one level up) instead of leaving the screen.
+    return registerModal(() => closeRef.current());
+  }, [open]);
 
   // Escape does the same on a desktop keyboard.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (

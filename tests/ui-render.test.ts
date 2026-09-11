@@ -629,3 +629,93 @@ test('demo mode can be left again', async () => {
   await clickText('exit demo');
   assert.equal(localStorage.getItem('ss_demo_mode'), null, 'the demo flag was cleared');
 });
+
+
+test('the tab bar marks the tab you are actually on', async () => {
+  await mount('/orders');
+  const active = Array.from(container.querySelectorAll('a[aria-current="page"]')).map((a) => (a.textContent || '').trim());
+  assert.ok(active.length >= 1, 'one tab is marked as current');
+  assert.ok(
+    active.some((t) => /Orders/.test(t)),
+    `the Orders tab is the active one, got: ${JSON.stringify(active)}`,
+  );
+
+  await mount('/dashboard');
+  const active2 = Array.from(container.querySelectorAll('a[aria-current="page"]')).map((a) => (a.textContent || '').trim());
+  assert.ok(active2.some((t) => /Dashboard/.test(t)), `Dashboard is marked, got ${JSON.stringify(active2)}`);
+  assert.ok(!active2.some((t) => /Orders/.test(t)), 'and Orders is not');
+});
+
+test('the active tab is also styled, not only marked for screen readers', async () => {
+  await mount('/ai');
+  const aiTab = Array.from(container.querySelectorAll('a')).find((a) => /AI Query/.test(a.textContent || ''));
+  assert.ok(aiTab, 'the AI Query tab exists');
+  assert.match(aiTab!.className, /text-brand-700/, 'the active tab is highlighted');
+  const other = Array.from(container.querySelectorAll('a')).find((a) => /Dashboard/.test(a.textContent || ''));
+  assert.ok(other, 'another tab exists');
+  assert.ok(!/text-brand-700/.test(other!.className), 'the inactive tab is not highlighted');
+});
+
+test('the "I have an access key" page is reachable', async () => {
+  // This route 404'd: the sign-in screen linked to /join, but the gate answered
+  // every path with the sign-in screen, so the link looked dead.
+  await mount('/join');
+  const body = text();
+  assert.ok(
+    /Join with an access key|Enter your access key|Sign-in is not configured/.test(body),
+    `the join screen renders, got: ${body.slice(0, 120)}`,
+  );
+  assert.ok(!/Page not found/.test(body), 'and it is not the 404 page');
+});
+
+
+test('a modal survives state changes inside it (typing, filling, pressing buttons)', async () => {
+  // Reported as "clicking the sample-data button / Mark job as done closes the
+  // modal" on every device. Cause: Modal re-registered its history entry on every
+  // render (onClose was an inline arrow), and the cleanup walked the entry off —
+  // history.back() → popstate → the dialog closed itself.
+  await mount('/orders');
+  await clickText('+ New order');
+  assert.match(text(), /New service order/, 'dialog open');
+
+  // typing
+  await typeInto(inputByPlaceholder('Ahmad Zaki'), 'Ahmad');
+  assert.match(text(), /New service order/, 'typing must not close it');
+  assert.equal((inputByPlaceholder('Ahmad Zaki') as HTMLInputElement).value, 'Ahmad', 'the field kept the text');
+
+  // a state-changing button (the same one the user pressed)
+  const fill = container.querySelector('button[title="Fill this form with sample data"]');
+  assert.ok(fill, 'the sample-data button is present');
+  await act(async () => {
+    fill!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  assert.match(text(), /New service order/, 'the sample-data button must not close it');
+  assert.equal((inputByPlaceholder('Ahmad Zaki') as HTMLInputElement).value, 'Sample Customer', 'and it filled the form');
+
+  // the primary action inside the dialog
+  await clickText('Create order');
+  assert.ok(!/Page not found/.test(text()), 'the app is still on a real screen');
+});
+
+test('the completion dialog stays open through its own buttons', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+  await clickText('Complete job');
+  assert.match(text(), /Complete SS-2026-/, 'sheet open');
+
+  // the sample-data button inside the completion sheet
+  const fill = container.querySelector('button[title="Fill this report with sample data"]');
+  assert.ok(fill, 'the report filler is present');
+  await act(async () => {
+    fill!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  assert.match(text(), /Complete SS-2026-/, 'the sheet must still be open after filling');
+  assert.match(text(), /Chemical cleaned the indoor unit/, 'and it filled the report');
+
+  // pressing the primary action opens the confirm panel instead of closing
+  await clickText('Mark job as done');
+  assert.match(text(), /Mark this job as done\?/, 'the confirm panel appears');
+  await clickText('Back to the form');
+  assert.match(text(), /Complete SS-2026-/, 'and we are back on the form, not out of the sheet');
+});

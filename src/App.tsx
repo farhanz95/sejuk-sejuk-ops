@@ -18,6 +18,7 @@ import JoinWithKeyPage from './pages/JoinWithKeyPage';
 import AccessKeysPage from './pages/AccessKeysPage';
 import { useAuth } from './state/AuthState';
 import type { ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 
 function Landing() {
   const { actor, setActor, mode, ready, data } = useApp();
@@ -108,14 +109,22 @@ function NotFound() {
 function AuthGate({ children }: { children: ReactNode }) {
   const { configured, authReady, user, profile, loadingProfile, signOutStaff } = useAuth();
   const demo = typeof localStorage !== 'undefined' && localStorage.getItem('ss_demo_mode') === '1';
+  const { pathname } = useLocation();
+  // `/join` is a route in its own right: the sign-in screen links to it, and the
+  // gate used to answer every path with the sign-in screen — so the "I have an
+  // access key" button looked broken.
+  const wantsJoin = pathname.startsWith('/join');
 
-  if (!configured || demo) return <>{children}</>;
+  if (!configured || demo) {
+    if (wantsJoin) return <JoinWithKeyPage />;
+    return <>{children}</>;
+  }
   if (!authReady) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Loading…</div>
     );
   }
-  if (!user) return <SignInPage />;
+  if (!user) return wantsJoin ? <JoinWithKeyPage /> : <SignInPage />;
   if (loadingProfile || !profile) {
     return (
       <>
