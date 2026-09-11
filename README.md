@@ -301,6 +301,26 @@ job in a list that grows all week.
   an order-ID search narrows the list from two cards to one, name and address
   searches hit, nonsense text shows "No job matches that", 0 console errors.
 
+#### The same pattern on the management screens (2026-09-11)
+
+Each role now opens its main screen onto a work log of the things that role must
+act on, with one shared search + filter behaviour across the app (the app's own
+`StatCard` and chip styling, not a new design per screen):
+
+- **Admin / Orders** — Unassigned (new orders nobody owns), In progress,
+  Awaiting review (stuck with the manager), Oldest open (days since the job came
+  in). Search matches order no, customer, phone, address, technician, status and
+  date, in the printed or numeric date forms; filter chips are the statuses plus
+  Any date / Today / This week / This month.
+- **Manager / Review** — Awaiting review, Waiting longest (since the job was
+  finished), Over quote (final above the quote), AI flags. The search narrows the
+  queue, the approved list and the anomaly list alike, with a Clear button.
+- **Activity log** — search across order no, event text, actor and date, plus the
+  date chips, because finding who touched a given order is the usual question
+  once the log grows.
+- **Technician / My jobs** — as above: To do, Waiting longest, Done today, Done
+  this week with the value of that work.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,
