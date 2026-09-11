@@ -53,14 +53,10 @@ export default function Layout() {
           </button>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            {mode === 'demo' ? (
-              <span className="chip border border-amber-200 bg-amber-50 text-amber-700" title="No Supabase env vars found — running on the seeded localStorage dataset.">
-                demo data
-              </span>
-            ) : (
-              <span className="chip border border-emerald-200 bg-emerald-50 text-emerald-700">supabase</span>
-            )}
-            <span className="hidden text-xs text-slate-500 sm:inline">{data.orders.length} orders</span>
+            {/* The "supabase" / "demo data" chip was removed: the storage backend
+                is our concern, not the user's, and it told a technician nothing
+                about their day. Each screen now shows its own work summary
+                instead (see TechJobs' work log). */}
 
             <select
               className="input !w-auto !py-2"

@@ -15,6 +15,27 @@ interface PendingFile {
   url: string;
 }
 
+/** One number in the technician's work log. */
+function WorkStat({
+  label,
+  value,
+  hint,
+  highlight,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`rounded-2xl border p-3 ${highlight ? 'border-brand-300 bg-brand-50' : 'border-slate-200 bg-white'}`}>
+      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={`mt-0.5 text-2xl font-bold leading-none ${highlight ? 'text-brand-700' : 'text-slate-800'}`}>{value}</div>
+      {hint ? <div className="mt-1 text-[11px] text-slate-500">{hint}</div> : null}
+    </div>
+  );
+}
+
 export default function TechJobs() {
   const { orderNo } = useParams();
   const navigate = useNavigate();
@@ -31,6 +52,13 @@ export default function TechJobs() {
   const [busy, setBusy] = useState(false);
   const [doneNo, setDoneNo] = useState<string | null>(null);
 
+  // Work log: what a technician actually opens this screen to see. Search covers
+  // the four things they look up in the field — order id, customer, address, date
+  // — plus phone and the assigned technician.
+  const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<'To do' | 'Done' | 'All'>('To do');
+  const [when, setWhen] = useState<'All' | 'Today' | 'This week' | 'This month'>('All');
+
   const myJobs = useMemo(() => {
     const name = actor.name.toLowerCase();
     return data.orders
@@ -40,6 +68,85 @@ export default function TechJobs() {
         return rank(a.status) - rank(b.status) || +new Date(b.created_at) - +new Date(a.created_at);
       });
   }, [data.orders, actor.name]);
+
+  /** The date that matters for a given job: when it finished, else last touched. */
+  const activityDate = (order: (typeof data.orders)[number]) => {
+    const report = data.reports.find((r) => r.order_no === order.order_no);
+    return new Date(report?.completed_at ?? order.updated_at ?? order.created_at);
+  };
+
+  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+  const workLog = useMemo(() => {
+    const now = new Date();
+    const today = dayStart(now);
+    const weekAgo = today - 7 * 86400000;
+    const monthAgo = today - 30 * 86400000;
+    const open = myJobs.filter((o) => o.status === 'Assigned' || o.status === 'In Progress');
+    const finished = myJobs.filter((o) => data.reports.some((r) => r.order_no === o.order_no));
+    const doneSince = (cutoff: number) =>
+      finished.filter((o) => +activityDate(o) >= cutoff);
+    const waitingDays = open.length
+      ? Math.max(
+          ...open.map((o) =>
+            Math.floor((dayStart(now) - dayStart(new Date(o.created_at))) / 86400000),
+          ),
+        )
+      : 0;
+    const weekDone = doneSince(weekAgo);
+    return {
+      open,
+      openCount: open.length,
+      inProgress: myJobs.filter((o) => o.status === 'In Progress').length,
+      doneToday: doneSince(today).length,
+      doneWeek: weekDone.length,
+      billedWeek: weekDone.reduce((sum, o) => {
+        const report = data.reports.find((r) => r.order_no === o.order_no);
+        return sum + (report?.final_amount ?? o.quoted_price);
+      }, 0),
+      waitingDays,
+      unread: data.orders.filter(
+        (o) =>
+          (o.assigned_technician ?? '').toLowerCase() === actor.name.toLowerCase() &&
+          (o.status === 'Assigned' || o.status === 'In Progress'),
+      ).length,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myJobs, data.reports]);
+
+  const visibleJobs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const now = new Date();
+    const today = dayStart(now);
+    const cutoff =
+      when === 'Today' ? today : when === 'This week' ? today - 7 * 86400000 : when === 'This month' ? today - 30 * 86400000 : null;
+
+    return myJobs.filter((o) => {
+      const report = data.reports.find((r) => r.order_no === o.order_no);
+      const date = activityDate(o);
+      const isDone = Boolean(report);
+
+      if (scope === 'To do' && isDone) return false;
+      if (scope === 'Done' && !isDone) return false;
+      if (cutoff !== null && dayStart(date) < cutoff) return false;
+
+      if (!q) return true;
+      // Dates are searchable as typed in the portal (10 Sep 2026) and in the
+      // numeric forms a technician might punch in (10/9, 2026-09-10).
+      const d = date;
+      const stamp = [
+        d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+        d.toISOString().slice(0, 10),
+        `${d.getDate()}/${d.getMonth() + 1}`,
+        `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
+      ].join(' ');
+      return [o.order_no, o.customer_name, o.address, o.phone, o.problem_description, o.assigned_technician ?? '', o.status, stamp]
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [myJobs, data.reports, query, scope, when]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const openOrder = openNo ? data.orders.find((o) => o.order_no === openNo) : undefined;
   const openReport = openNo ? data.reports.find((r) => r.order_no === openNo) : undefined;
@@ -123,15 +230,72 @@ export default function TechJobs() {
         </p>
       </div>
 
+      {/* Work log — what this screen is opened for: how much is still on me, how
+          long one has been sitting, and what today has produced. */}
+      <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+        <WorkStat
+          label="To do"
+          value={workLog.openCount}
+          hint={workLog.inProgress ? `${workLog.inProgress} in progress` : 'assigned, not started'}
+          highlight={workLog.openCount > 0}
+        />
+        <WorkStat
+          label="Waiting longest"
+          value={workLog.waitingDays <= 0 ? 'new' : `${workLog.waitingDays}d`}
+          hint="oldest job still open"
+        />
+        <WorkStat label="Done today" value={workLog.doneToday} hint="with a report" />
+        <WorkStat label="Done this week" value={workLog.doneWeek} hint={money(workLog.billedWeek)} />
+      </div>
+
+      <Card className="mb-3 p-3">
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+          <input
+            className="input !pl-9"
+            placeholder="Search order ID, customer, address, phone, date…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {(['To do', 'Done', 'All'] as const).map((s2) => (
+            <button
+              key={s2}
+              className={`chip border ${scope === s2 ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600'}`}
+              onClick={() => setScope(s2)}
+            >
+              {s2} · {s2 === 'To do' ? workLog.openCount : s2 === 'Done' ? myJobs.length - workLog.openCount : myJobs.length}
+            </button>
+          ))}
+          <span className="mx-1 h-5 w-px bg-slate-200" />
+          {(['All', 'Today', 'This week', 'This month'] as const).map((w) => (
+            <button
+              key={w}
+              className={`chip border ${when === w ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600'}`}
+              onClick={() => setWhen(w)}
+            >
+              {w === 'All' ? 'Any date' : w}
+            </button>
+          ))}
+        </div>
+      </Card>
+
       {myJobs.length === 0 ? (
         <EmptyState
           icon="🔧"
           title={`No jobs assigned to ${actor.name}`}
           hint="Switch to the Admin role in the header, create an order and assign it to this technician."
         />
+      ) : visibleJobs.length === 0 ? (
+        <EmptyState
+          icon="🔍"
+          title="No job matches that"
+          hint="Try the order ID (SS-2026-…), the customer's name or address, or switch the date filter back to Any date."
+        />
       ) : (
         <div className="space-y-3">
-          {myJobs.map((o) => {
+          {visibleJobs.map((o) => {
             const report = data.reports.find((r) => r.order_no === o.order_no);
             const actionable = (o.status === 'Assigned' || o.status === 'In Progress') && o.assigned_technician?.toLowerCase() === actor.name.toLowerCase();
             return (

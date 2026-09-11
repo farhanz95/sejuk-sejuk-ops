@@ -59,6 +59,40 @@ async function mount(path = '/', opts: { keepRole?: boolean } = {}) {
 
 const text = () => container.textContent ?? '';
 
+/** Change via the native setter so React's onChange fires (JSX inputs ignore a
+ *  plain `value =` assignment). */
+async function typeInto(input: Element, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+  assert.ok(setter, 'the native value setter exists');
+  await act(async () => {
+    setter!.call(input, value);
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+}
+
+function inputByPlaceholder(needle: string) {
+  const el = Array.from(container.querySelectorAll('input')).find((i) => (i.placeholder ?? '').includes(needle));
+  assert.ok(el, `an input with a placeholder containing "${needle}" exists`);
+  return el!;
+}
+
+/** Each job card renders its order number in its own span — count those. */
+function jobCardCount() {
+  return Array.from(container.querySelectorAll('span')).filter((sp) =>
+    /^SS-2026-\d{4}$/.test((sp.textContent ?? '').trim()),
+  ).length;
+}
+
+/** Switch the mock-login role exactly the way the header selector does. */
+async function selectRole(value: string) {
+  await act(async () => {
+    const select = container.querySelector('select') as HTMLSelectElement;
+    assert.ok(select, 'the role selector exists');
+    select.value = value;
+    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  });
+}
+
 async function clickText(label: string) {
   const target = Array.from(container.querySelectorAll('button, a')).find((el) => (el.textContent ?? '').includes(label));
   assert.ok(target, `a control containing "${label}" exists`);
@@ -221,4 +255,83 @@ test('the activity log renders the audit trail', async () => {
   assert.match(body, /Activity log/);
   assert.match(body, /Every key action is traceable/);
   assert.match(body, /WhatsApp notifications/);
+});
+
+
+test('a technician gets a work log and a search box on My Jobs', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+  const body = text();
+  assert.match(body, /To do/, 'work log shows the open-job count');
+  assert.match(body, /Waiting longest/);
+  assert.match(body, /Done today/);
+  assert.match(body, /Done this week/);
+  assert.ok(inputByPlaceholder('Search order ID'), 'the search box is present');
+  assert.match(body, /Any date/, 'date-filter chips are present');
+  assert.ok(!/supabase/i.test(body), 'the storage-backend chip no longer appears');
+});
+
+test('searching My Jobs filters by order id, customer, address and date', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+  // widen to every job first: the default scope is "To do", and this test is
+  // about searching, not about the status filter (covered separately below).
+  await clickText('All');
+
+  const { buildSeed } = await import('../src/lib/seed');
+  const seed = buildSeed();
+  const mine = seed.orders.filter((o) => o.assigned_technician === 'Ali');
+  assert.ok(mine.length > 1, 'Ali has several seeded jobs to filter');
+
+  const target = mine[0];
+  const box = inputByPlaceholder('Search order ID');
+
+  // by order id
+  await typeInto(box, target.order_no);
+  assert.ok(text().includes(target.order_no), 'the searched order is still listed');
+  assert.ok(!mine.slice(1).some((o) => text().includes(o.order_no)), 'other jobs are filtered out');
+
+  // by customer name
+  await typeInto(box, target.customer_name);
+  assert.ok(text().includes(target.customer_name));
+
+  // by address (a distinctive fragment)
+  await typeInto(box, target.address.split(',')[0].slice(0, 8));
+  assert.ok(text().includes(target.customer_name), 'the address search keeps its owner visible');
+
+  // by date, typed the way the portal prints it
+  const stamp = new Date(target.updated_at ?? target.created_at).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+  await typeInto(box, stamp);
+  assert.ok(text().includes(target.order_no), `a date search ("${stamp}") finds the job`);
+
+  // nonsense narrows to the empty state rather than showing everything
+  await typeInto(box, 'zzz-no-such-job');
+  assert.match(text(), /No job matches that/);
+});
+
+test('the To do / Done / Any date chips change the list', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+
+  const { buildSeed } = await import('../src/lib/seed');
+  const seed = buildSeed();
+  const mine = seed.orders.filter((o) => o.assigned_technician === 'Ali');
+  const open = mine.filter((o) => o.status === 'Assigned' || o.status === 'In Progress');
+
+  assert.equal(jobCardCount(), open.length, 'To do shows only the open jobs');
+
+  await clickText('Done');
+  const done = mine.filter((o) => !(o.status === 'Assigned' || o.status === 'In Progress'));
+  assert.equal(jobCardCount(), done.length, 'Done shows only finished jobs');
+
+  await clickText('Any date');
+  await clickText('All');
+  assert.equal(jobCardCount(), mine.length, 'All shows every job assigned to Ali');
 });
