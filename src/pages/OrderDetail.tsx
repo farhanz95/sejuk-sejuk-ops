@@ -43,17 +43,17 @@ export default function OrderDetail() {
       </button>
 
       <Card className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-slate-800">{o.order_no}</h1>
               <StatusPill status={o.status} />
             </div>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-xs text-slate-500">
               Created <TimeText iso={o.created_at} /> · {o.service_type}
             </p>
           </div>
-          <div className="text-right">
+          <div className="shrink-0 text-right">
             <div className="text-xs uppercase tracking-wide text-slate-500">Quoted</div>
             <div className="text-lg font-bold text-slate-800">
               <MoneyText value={o.quoted_price} />

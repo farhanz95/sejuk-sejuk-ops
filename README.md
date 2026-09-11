@@ -490,6 +490,26 @@ Two reports about the same area.
   one compact row. Measured on the deployed build: **66px**, nothing showing
   through, the menu opens with the role choices.
 
+#### Cards: the empty space on the right (2026-09-11)
+
+On a phone the order cards showed a large blank area beside the customer name.
+The cause was the two-column card built with `flex-wrap` + `justify-between`: the
+left block (order no, customer, phone, problem) grew to the full width, so the
+right block (amount, service, technician) wrapped onto its own line and floated
+wherever it landed — with the amount centred-looking and the technician stranded
+in the middle.
+
+Every list card now uses the same shape: the identity block is `min-w-0 flex-1`
+(so it fills the row and truncates instead of pushing), the amount is
+`shrink-0 text-right` (pinned to the card's right edge), and the meta facts
+(date · technician) sit on their own small row aligned with the card. Fixed in the
+admin order list, the manager review queue, the technician's job cards and the
+order detail header — one card shape across the app.
+
+Measured on the deployed build at 414px wide: amount gap from the card edge
+**17px** (the padding), amount on the **top row** (18px down), gap between the
+customer name and the amount **12px** — no dead space — and 0 console errors.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,
