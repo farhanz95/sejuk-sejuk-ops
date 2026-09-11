@@ -510,6 +510,30 @@ Measured on the deployed build at 414px wide: amount gap from the card edge
 **17px** (the padding), amount on the **top row** (18px down), gap between the
 customer name and the amount **12px** — no dead space — and 0 console errors.
 
+#### Staff access is a whitelist, not a key (2026-09-11)
+
+Access keys are gone. The admin registers a person in **Staff access** — an email
+address (Google sign-in) and/or a phone number (4-digit PIN) — and that record is
+the invitation. The sign-in screen offers exactly two choices, and says the one
+thing a new person needs to know: *"First login: your email or phone number must
+be registered by your admin."*
+
+| Path | How it works |
+| --- | --- |
+| **Login using email** | Google sign-in. The database (`staff_login_google`) checks the address against the whitelist; an unregistered address is signed out again immediately, so no session lingers. |
+| **Login using phone number** | The first time, the person chooses a 4-digit PIN (`staff_set_phone_pin`); after that it is number + PIN (`staff_login_phone`). No email needed. |
+
+The PIN is stored as `sha256(phone:pin)` — never in the clear, never sent to the
+client — and five wrong attempts lock that number for 15 minutes, in the database
+rather than the browser. Revoking a person in the admin screen takes effect on
+their next sign-in, because every sign-in consults the whitelist. The admin can
+also reset a forgotten PIN, which simply clears it so the person chooses a new one.
+
+Run `supabase/staff_directory.sql` once (it supersedes `staff_auth*.sql`). Until it
+runs, the login screen says so plainly instead of failing silently. The old
+key-based screens (`SignInPage`, `JoinWithKeyPage`, `AccessKeysPage`) were deleted
+rather than left behind as dead code.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

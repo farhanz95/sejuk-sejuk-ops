@@ -62,6 +62,35 @@ async function mount(path = '/', opts: { keepRole?: boolean } = {}) {
   });
 }
 
+/**
+ * The sign-in screen on its own. In this suite the app runs in demo mode (no
+ * Firebase/Supabase env), so `AuthGate` lets the demo through and the login screen
+ * would never be exercised through `mount`. Rendering it directly is the only way
+ * to test what a real signed-out visitor sees.
+ */
+async function renderSignIn() {
+  const { default: LoginPage } = await import('../src/pages/LoginPage');
+  dom.window.localStorage.clear();
+  container.innerHTML = '';
+  root = createRoot(container);
+  await act(async () => {
+    root.render(
+      React.createElement(AuthProvider, null, React.createElement(LoginPage, null)),
+    );
+  });
+  return {
+    text: () => container.textContent ?? '',
+    buttons: () => [...container.querySelectorAll('button')].map((b) => (b.textContent || '').trim()),
+    click: async (re: RegExp) => {
+      const el = [...container.querySelectorAll('button')].find((b) => re.test(b.textContent || ''));
+      assert.ok(el, `a button matching ${re} exists`);
+      await act(async () => {
+        el!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+    },
+  };
+}
+
 const text = () => container.textContent ?? '';
 
 /** Change via the native setter so React's onChange fires (JSX inputs ignore a
@@ -656,16 +685,50 @@ test('the active tab is also styled, not only marked for screen readers', async 
   assert.ok(!/text-brand-700/.test(other!.className), 'the inactive tab is not highlighted');
 });
 
-test('the "I have an access key" page is reachable', async () => {
-  // This route 404'd: the sign-in screen linked to /join, but the gate answered
-  // every path with the sign-in screen, so the link looked dead.
-  await mount('/join');
-  const body = text();
-  assert.ok(
-    /Join with an access key|Enter your access key|Sign-in is not configured/.test(body),
-    `the join screen renders, got: ${body.slice(0, 120)}`,
-  );
-  assert.ok(!/Page not found/.test(body), 'and it is not the 404 page');
+test('sign-in offers exactly two ways in, and says the admin must register you', async () => {
+  // Access keys are gone: the admin whitelists an email and/or a phone number in
+  // Staff access, and that is the invitation.
+  const screen = await renderSignIn();
+  const body = screen.text();
+  assert.ok(!/access key/i.test(body), 'no access-key language anywhere');
+  assert.ok(!/join with an access key/i.test(body), 'the old join screen is gone');
+  assert.match(body, /must be registered by your admin/, 'the one rule a new person needs is stated');
+  const buttons = screen.buttons();
+  assert.ok(buttons.some((b) => /Login using email/.test(b)), `email login offered, got: ${buttons.join(' | ')}`);
+  assert.ok(buttons.some((b) => /Login using phone number/.test(b)), 'phone login offered');
+  assert.equal(buttons.filter((b) => /Login using/.test(b)).length, 2, 'exactly two ways in');
+});
+
+test('the phone step has a small way back, and no sign-out before signing in', async () => {
+  // Reported: the phone path had no back button, and it showed a sign-out button
+  // before the person had signed in.
+  const screen = await renderSignIn();
+  await screen.click(/Login using phone number/);
+
+  assert.ok(/Login using phone number/.test(screen.text()), 'the phone step opened');
+  const back = screen.buttons().find((b) => /^←\s*Back$/.test(b.trim()));
+  assert.ok(back, `a back button is present, got: ${screen.buttons().join(' | ')}`);
+  assert.ok(!/Sign out/i.test(screen.text()), 'no sign-out button before signing in');
+
+  const backEl = [...container.querySelectorAll('button')].find((b) => /^←\s*Back$/.test((b.textContent || '').trim()))!;
+  assert.ok(/text-xs/.test(backEl.className), 'and the back control is small');
+  await act(async () => {
+    backEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  assert.ok(/Login using email/.test(screen.text()), 'back returns to the two choices');
+});
+
+test('the staff list is the way people are invited (no key screen)', async () => {
+  const { default: StaffAccessPage } = await import('../src/pages/StaffAccessPage');
+  dom.window.localStorage.clear();
+  container.innerHTML = '';
+  root = createRoot(container);
+  await act(async () => {
+    root.render(React.createElement(AuthProvider, null, React.createElement(StaffAccessPage, null)));
+  });
+  const body = container.textContent ?? '';
+  assert.ok(!/access key/i.test(body), 'the key screen is gone');
+  assert.match(body, /Staff access|not configured/i, `staff access screen renders, got: ${body.slice(0, 120)}`);
 });
 
 

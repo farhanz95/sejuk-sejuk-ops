@@ -13,9 +13,8 @@ import AiQuery from './pages/AiQuery';
 import Activity from './pages/Activity';
 import MyActivity from './pages/MyActivity';
 import { RequireRole } from './components/RequireRole';
-import SignInPage from './pages/SignInPage';
-import JoinWithKeyPage from './pages/JoinWithKeyPage';
-import AccessKeysPage from './pages/AccessKeysPage';
+import LoginPage from './pages/LoginPage';
+import StaffAccessPage from './pages/StaffAccessPage';
 import { useAuth } from './state/AuthState';
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -109,27 +108,19 @@ function NotFound() {
 function AuthGate({ children }: { children: ReactNode }) {
   const { configured, authReady, user, profile, loadingProfile } = useAuth();
   const demo = typeof localStorage !== 'undefined' && localStorage.getItem('ss_demo_mode') === '1';
-  const { pathname } = useLocation();
-  // `/join` is a route in its own right: the sign-in screen links to it, and the
-  // gate used to answer every path with the sign-in screen — so the "I have an
-  // access key" button looked broken.
-  const wantsJoin = pathname.startsWith('/join');
 
-  if (!configured || demo) {
-    if (wantsJoin) return <JoinWithKeyPage />;
-    return <>{children}</>;
+  // Demo mode is the review path: it runs on the seeded dataset and needs no account.
+  if (!configured || demo) return <>{children}</>;
+
+  if (!authReady || (user && loadingProfile)) {
+    return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Loading…</div>;
   }
-  if (!authReady) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Loading…</div>
-    );
-  }
-  if (!user) return wantsJoin ? <JoinWithKeyPage /> : <SignInPage />;
-  if (loadingProfile || !profile) {
-    // The join screen already offers its own Sign out, so the gate must not add a
-    // second one — two identical buttons sat next to each other on the phone.
-    return <JoinWithKeyPage />;
-  }
+
+  // One screen answers every signed-out path. Both ways in (email / phone number)
+  // live on it, and it explains that the admin must register you first — the old
+  // separate `/join` screen (and its key boxes) is gone.
+  if (!user || !profile) return <LoginPage />;
+
   return <>{children}</>;
 }
 
@@ -157,7 +148,7 @@ export default function App() {
         <Route path="activity" element={<RequireRole roles={['Admin', 'Manager']}><Activity /></RequireRole>} />
 
         {/* Admin: who may join, and with which key */}
-        <Route path="access-keys" element={<RequireRole roles={['Admin']}><AccessKeysPage /></RequireRole>} />
+        <Route path="staff" element={<RequireRole roles={['Admin']}><StaffAccessPage /></RequireRole>} />
 
         <Route path="*" element={<NotFound />} />
         <Route path="home" element={<Navigate to="/" replace />} />

@@ -42,7 +42,7 @@ export default function Layout() {
             { to: '/ai', label: 'AI Query', icon: '🤖' },
             { to: '/activity', label: 'Activity', icon: '🕘' },
             // Only offered where staff accounts exist — a demo session has no keys to manage.
-            ...(auth.configured ? [{ to: '/access-keys', label: 'Access keys', icon: '🔑' }] : []),
+            ...(auth.configured ? [{ to: '/staff', label: 'Staff access', icon: '👥' }] : []),
           ];
 
   return (

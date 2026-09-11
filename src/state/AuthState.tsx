@@ -1,20 +1,23 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth';
 import { firebaseAuth, firebaseConfigured, googleProvider, supabase, supabaseConfigured } from '../lib/firebase';
-import type { Role, Technician } from '../lib/types';
 import { normalisePhone } from '../lib/domain';
+import type { Role, Technician } from '../lib/types';
 
 /**
- * Staff identity.
+ * Staff identity — whitelist, not keys.
  *
- * Two ways in, deliberately:
- *  1. **Google sign-in** (real use). First time, the technician also needs an
- *     access key an admin created for them — that is what stops any Google
- *     account from reading the operations data. The key is used once; afterwards
- *     Google alone is enough, because Google remembers the account on the phone.
- *  2. **Demo mode** (reviewers, training, offline). The role switch stays, so the
- *     app can be explored without a Firebase account — this is stated on the
- *     sign-in screen rather than hidden.
+ * The admin registers an email address and/or a phone number in **Staff access**;
+ * that registration is the invitation. Two ways in:
+ *
+ *  * **Login using email** — Google. The account is tied to the person on first
+ *    sign-in, so it is one tap afterwards. An email nobody registered is refused.
+ *  * **Login using phone number** — the first time, the person chooses a 4-digit
+ *    PIN; after that it is number + PIN. No email needed. Five wrong PINs locks
+ *    that number for 15 minutes (in the database, not the browser).
+ *
+ * Both paths are decided by the database (`staff_login_google` /
+ * `staff_login_phone`), so revoking somebody takes effect immediately.
  */
 export interface StaffProfile {
   uid: string;
@@ -23,91 +26,93 @@ export interface StaffProfile {
   photo_url: string | null;
   role: Role;
   technician_name: string | null;
-  /** captured for technicians who join without an email address */
   phone: string | null;
-  auth_provider: 'google' | 'anonymous';
+  auth_provider: 'google' | 'phone' | 'anonymous';
   created_at: string;
   last_seen_at: string;
 }
 
-export interface JoinKey {
-  /** sha256 of the code — what the database stores (the code itself is never kept) */
-  code_hash: string;
-  /** present ONLY on the response that created the key: the one chance to copy it */
-  code?: string;
+/** One row of the admin's whitelist. */
+export interface DirectoryEntry {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  display_name: string | null;
   role: Role;
   technician_name: string | null;
-  label: string | null;
-  expires_at: string | null;
+  pin_set_at: string | null;
+  locked_until: string | null;
   revoked_at: string | null;
-  used_at: string | null;
-  used_by_email: string | null;
+  last_login_at: string | null;
   created_by: string | null;
   created_at: string;
 }
 
-export interface ClaimResult {
+export interface PhoneStatus {
+  found: boolean;
+  needsPin: boolean;
+  revoked: boolean;
+  locked: boolean;
+  displayName: string | null;
+  role: Role | null;
+}
+
+export interface LoginResult {
   ok: boolean;
   reason: string;
-  role?: Role;
-  technician_name?: string | null;
 }
 
 interface AuthValue {
-  /** true when a Firebase project is configured in this build */
   authReady: boolean;
   configured: boolean;
   user: User | null;
   profile: StaffProfile | null;
   loadingProfile: boolean;
-  signInWithGoogle: () => Promise<void>;
-  /** For technicians with no email: an account on this device, authorised by the key. */
-  signInWithoutEmail: () => Promise<void>;
+  signInWithGoogle: () => Promise<LoginResult>;
+  phoneStatus: (phone: string) => Promise<PhoneStatus>;
+  setPhonePin: (phone: string, pin: string) => Promise<LoginResult>;
+  signInWithPhone: (phone: string, pin: string) => Promise<LoginResult>;
   signOutStaff: () => Promise<void>;
-  /** First-time join: claims an admin-issued key and records the account. */
-  claimKey: (input: { code: string; technician: Technician | ''; displayName: string; phone?: string }) => Promise<ClaimResult>;
-  /** Admin: manage the keys. */
-  listKeys: () => Promise<JoinKey[]>;
-  createKey: (input: { role: Role; technician: Technician | ''; label: string; expiresInDays: number | null }) => Promise<JoinKey>;
-  revokeKey: (codeHash: string) => Promise<void>;
-  deleteKey: (codeHash: string) => Promise<void>;
-  listStaff: () => Promise<StaffProfile[]>;
-  refreshProfile: () => Promise<void>;
+  // Admin
+  listDirectory: () => Promise<DirectoryEntry[]>;
+  addPerson: (input: {
+    email?: string;
+    phone?: string;
+    displayName: string;
+    role: Role;
+    technician: Technician | '';
+  }) => Promise<DirectoryEntry>;
+  revokePerson: (id: string, revoked: boolean) => Promise<void>;
+  deletePerson: (id: string) => Promise<void>;
+  resetPin: (id: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
-
-/**
- * The database only ever stores this hash, so a leaked table row is useless: the
- * code exists on the admin's screen (once) and in the technician's message.
- * Uppercased and trimmed, matching claim_join_key().
- */
-export async function hashKey(code: string): Promise<string> {
-  const bytes = new TextEncoder().encode(code.trim().toUpperCase());
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/** Keys look like SS-7F3K-9Q2M: unambiguous to read out over the phone. */
-export function generateKey(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1
-  const block = () => Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
-  return `SS-${block()}-${block()}`;
-}
 
 async function profileFor(user: User): Promise<StaffProfile | null> {
   if (!supabase) return null;
   const { data, error } = await supabase.from('staff_accounts').select('*').eq('uid', user.uid).maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  // Keep "last seen" roughly current without a write on every render.
   const seen = new Date(data.last_seen_at ?? 0).getTime();
   if (Date.now() - seen > 6 * 60 * 60 * 1000) {
     void supabase.from('staff_accounts').update({ last_seen_at: new Date().toISOString() }).eq('uid', user.uid);
   }
   return data as StaffProfile;
+}
+
+/** PostgREST says this when the SQL has not been run in the project yet. */
+function setupHint(message: string): string {
+  if (/could not find the function|PGRST202|does not exist/i.test(message)) {
+    return 'Staff setup is not finished on the server yet — run supabase/staff_directory.sql in Supabase (see README).';
+  }
+  return message;
+}
+
+/** One row back from the login functions (PostgREST returns an array for a set). */
+function firstRow<T>(data: unknown): T | null {
+  if (Array.isArray(data)) return (data[0] as T) ?? null;
+  return (data as T) ?? null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -129,39 +134,106 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setProfile(await profileFor(next));
       } catch {
-        setProfile(null); // no row yet → the UI sends them to the key step
+        setProfile(null);
       } finally {
         setLoadingProfile(false);
       }
     });
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
-    if (!firebaseAuth) throw new Error('Firebase is not configured in this build.');
+  const signInWithGoogle = useCallback<AuthValue['signInWithGoogle']>(async () => {
+    if (!firebaseAuth || !supabase) return { ok: false, reason: 'Sign-in is not configured in this build.' };
     const provider = googleProvider();
+    let credential;
     try {
-      await signInWithPopup(firebaseAuth, provider);
+      credential = await signInWithPopup(firebaseAuth, provider);
     } catch (err) {
-      // Popups are blocked in some in-app browsers (WhatsApp/Instagram); fall back
-      // to a full-page redirect rather than leaving the technician stuck.
       const code = (err as { code?: string }).code ?? '';
       if (code.includes('popup-blocked') || code.includes('popup-closed-by-user') || code.includes('cancelled-popup-request')) {
         await signInWithRedirect(firebaseAuth, provider);
-        return;
+        return { ok: true, reason: '' };
       }
-      throw err;
+      return { ok: false, reason: err instanceof Error ? err.message : 'Google sign-in failed.' };
     }
+
+    const gUser = credential.user;
+    const { data, error } = await supabase.rpc('staff_login_google', {
+      p_uid: gUser.uid,
+      p_email: gUser.email,
+      p_display_name: gUser.displayName,
+    });
+    if (error) {
+      await signOut(firebaseAuth);
+      return { ok: false, reason: setupHint(error.message) };
+    }
+    const row = firstRow<{ ok: boolean; reason: string }>(data);
+    if (!row?.ok) {
+      // Not on the whitelist (or revoked): do not leave a half-signed-in session.
+      await signOut(firebaseAuth);
+      return { ok: false, reason: row?.reason ?? 'That account is not registered.' };
+    }
+    setProfile(await profileFor(gUser));
+    return { ok: true, reason: '' };
   }, []);
 
-  /**
-   * No-email path: Firebase gives this device its own account, and the admin's
-   * key is what actually authorises the person. It is a device-bound account, so
-   * the phone number is recorded (and the office can see who is on which device).
-   */
-  const signInWithoutEmail = useCallback(async () => {
-    if (!firebaseAuth) throw new Error('Firebase is not configured in this build.');
-    await signInAnonymously(firebaseAuth);
+  const phoneStatus = useCallback<AuthValue['phoneStatus']>(async (phone) => {
+    const empty: PhoneStatus = { found: false, needsPin: false, revoked: false, locked: false, displayName: null, role: null };
+    if (!supabase || !phone.trim()) return empty;
+    const { data, error } = await supabase.rpc('staff_phone_status', { p_phone: normalisePhone(phone) });
+    if (error) return empty;
+    const row = firstRow<{
+      found: boolean;
+      needs_pin: boolean;
+      revoked: boolean;
+      locked: boolean;
+      display_name: string | null;
+      role: Role | null;
+    }>(data);
+    if (!row) return empty;
+    return {
+      found: row.found,
+      needsPin: row.needs_pin,
+      revoked: row.revoked,
+      locked: row.locked,
+      displayName: row.display_name,
+      role: row.role,
+    };
   }, []);
+
+  const setPhonePin = useCallback<AuthValue['setPhonePin']>(async (phone, pin) => {
+    if (!supabase) return { ok: false, reason: 'Sign-in is not configured in this build.' };
+    const { data, error } = await supabase.rpc('staff_set_phone_pin', { p_phone: normalisePhone(phone), p_pin: pin });
+    if (error) return { ok: false, reason: setupHint(error.message) };
+    const row = firstRow<{ ok: boolean; reason: string }>(data);
+    return { ok: Boolean(row?.ok), reason: row?.reason ?? '' };
+  }, []);
+
+  const signInWithPhone = useCallback<AuthValue['signInWithPhone']>(
+    async (phone, pin) => {
+      if (!firebaseAuth || !supabase) return { ok: false, reason: 'Sign-in is not configured in this build.' };
+      // The device needs an identity of its own for the session; the PIN is what
+      // actually authorises it, and it works again on any device.
+      let current = firebaseAuth.currentUser;
+      if (!current) {
+        try {
+          current = (await signInAnonymously(firebaseAuth)).user;
+        } catch (err) {
+          return { ok: false, reason: err instanceof Error ? err.message : 'Could not start the session.' };
+        }
+      }
+      const { data, error } = await supabase.rpc('staff_login_phone', {
+        p_phone: normalisePhone(phone),
+        p_pin: pin,
+        p_uid: current.uid,
+      });
+      if (error) return { ok: false, reason: setupHint(error.message) };
+      const row = firstRow<{ ok: boolean; reason: string }>(data);
+      if (!row?.ok) return { ok: false, reason: row?.reason ?? 'That number and PIN did not match.' };
+      setProfile(await profileFor(current));
+      return { ok: true, reason: '' };
+    },
+    [],
+  );
 
   const signOutStaff = useCallback(async () => {
     if (!firebaseAuth) return;
@@ -169,98 +241,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   }, []);
 
-  const claimKey = useCallback<AuthValue['claimKey']>(
-    async ({ code, technician, displayName, phone }) => {
-      if (!supabase || !user) return { ok: false, reason: 'Sign in first (Google, or without an email), then enter the key.' };
-      const args = {
-        p_code: code.trim().toUpperCase(),
-        p_uid: user.uid,
-        p_email: user.email,
-        p_display_name: displayName || user.displayName || '',
-        p_technician: technician || null,
-      };
-      // The phone/provider columns arrived in a later migration. If the database
-      // has not been updated yet, PostgREST cannot resolve the new signature —
-      // so fall back to the original one rather than failing the registration.
-      let { data, error } = await supabase.rpc('claim_join_key', {
-        ...args,
-        p_phone: phone ? normalisePhone(phone) : null,
-        p_provider: user.isAnonymous ? 'anonymous' : 'google',
-      });
-      if (error && /PGRST202|schema cache|does not exist/i.test(error.message)) {
-        ({ data, error } = await supabase.rpc('claim_join_key', args));
-      }
-      if (error) return { ok: false, reason: error.message };
-      const row = Array.isArray(data) ? data[0] : data;
-      if (!row?.ok) return { ok: false, reason: row?.reason ?? 'That key could not be used.' };
-      setProfile(await profileFor(user));
-      return { ok: true, reason: row.reason, role: row.role, technician_name: row.technician_name };
-    },
-    [user],
-  );
-
-  const listKeys = useCallback(async () => {
+  const listDirectory = useCallback(async () => {
     if (!supabase) return [];
     const { data, error } = await supabase
-      .from('join_keys')
-      .select('code_hash, role, technician_name, label, expires_at, revoked_at, used_at, used_by_email, created_by, created_at')
+      .from('staff_directory')
+      .select('id, email, phone, display_name, role, technician_name, pin_set_at, locked_until, revoked_at, last_login_at, created_by, created_at')
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data ?? []) as JoinKey[];
+    return (data ?? []) as DirectoryEntry[];
   }, []);
 
-  const createKey = useCallback<AuthValue['createKey']>(
-    async ({ role, technician, label, expiresInDays }) => {
+  const addPerson = useCallback<AuthValue['addPerson']>(
+    async ({ email, phone, displayName, role, technician }) => {
       if (!supabase) throw new Error('Supabase is not configured in this build.');
-      const code = generateKey();
-      const code_hash = await hashKey(code);
-      const expires_at =
-        expiresInDays && expiresInDays > 0 ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null;
       const { data, error } = await supabase
-        .from('join_keys')
+        .from('staff_directory')
         .insert({
-          code_hash,
+          email: email?.trim().toLowerCase() || null,
+          phone: phone ? normalisePhone(phone) : null,
+          display_name: displayName.trim() || null,
           role,
-          technician_name: technician || null,
-          label: label || null,
-          expires_at,
+          technician_name: role === 'Technician' ? technician || null : null,
           created_by: profile?.display_name ?? profile?.email ?? 'admin',
         })
         .select()
         .single();
       if (error) throw error;
-      // Hand the plain code back once, for this screen only.
-      return { ...(data as JoinKey), code };
+      return data as DirectoryEntry;
     },
     [profile],
   );
 
-  const revokeKey = useCallback(async (code_hash: string) => {
+  const revokePerson = useCallback(async (id: string, revoked: boolean) => {
     if (!supabase) return;
     const { error } = await supabase
-      .from('join_keys')
-      .update({ revoked_at: new Date().toISOString() })
-      .eq('code_hash', code_hash);
+      .from('staff_directory')
+      .update({ revoked_at: revoked ? new Date().toISOString() : null })
+      .eq('id', id);
     if (error) throw error;
   }, []);
 
-  const deleteKey = useCallback(async (code_hash: string) => {
+  const deletePerson = useCallback(async (id: string) => {
     if (!supabase) return;
-    const { error } = await supabase.from('join_keys').delete().eq('code_hash', code_hash);
+    const { error } = await supabase.from('staff_directory').delete().eq('id', id);
     if (error) throw error;
   }, []);
 
-  const listStaff = useCallback(async () => {
-    if (!supabase) return [];
-    const { data, error } = await supabase.from('staff_accounts').select('*').order('created_at', { ascending: false });
+  const resetPin = useCallback(async (id: string) => {
+    if (!supabase) return;
+    // Clearing the PIN sends the person back to "choose a PIN" on their next login.
+    const { error } = await supabase
+      .from('staff_directory')
+      .update({ pin_hash: null, pin_set_at: null, failed_attempts: 0, locked_until: null })
+      .eq('id', id);
     if (error) throw error;
-    return (data ?? []) as StaffProfile[];
   }, []);
-
-  const refreshProfile = useCallback(async () => {
-    if (!user) return;
-    setProfile(await profileFor(user));
-  }, [user]);
 
   const value = useMemo<AuthValue>(
     () => ({
@@ -270,17 +305,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       loadingProfile,
       signInWithGoogle,
-      signInWithoutEmail,
+      phoneStatus,
+      setPhonePin,
+      signInWithPhone,
       signOutStaff,
-      claimKey,
-      listKeys,
-      createKey,
-      revokeKey,
-      deleteKey,
-      listStaff,
-      refreshProfile,
+      listDirectory,
+      addPerson,
+      revokePerson,
+      deletePerson,
+      resetPin,
     }),
-    [authReady, user, profile, loadingProfile, signInWithGoogle, signInWithoutEmail, signOutStaff, claimKey, listKeys, createKey, revokeKey, deleteKey, listStaff, refreshProfile],
+    [authReady, user, profile, loadingProfile, signInWithGoogle, phoneStatus, setPhonePin, signInWithPhone, signOutStaff, listDirectory, addPerson, revokePerson, deletePerson, resetPin],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
