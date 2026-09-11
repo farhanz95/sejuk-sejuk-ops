@@ -279,6 +279,28 @@ month?"). The flags are rule-based on purpose: an alert that decides money matte
 
 ---
 
+### Technician "My jobs": a work log, and search (2026-09-11)
+
+The technician screen used to open with a storage-backend chip ("supabase" /
+"demo data") that told the field technician nothing, and offered no way to find a
+job in a list that grows all week.
+
+- **The chip is gone** from the header, and My Jobs opens with a work log drawn
+  from that technician's own jobs: **To do** (with how many are already in
+  progress), **Waiting longest** (age of the oldest still-open job, so nothing
+  quietly rots), **Done today** (with a report), and **Done this week** with the
+  value of that work. It is deliberately still per-technician — no company-wide
+  revenue on this screen.
+- **Search** covers order ID, customer name, address, phone, problem text, status
+  and date. Dates match both the printed form ("10 Sep 2026") and the numeric
+  forms someone types in a hurry ("10/9", "2026-09-10"). Date chips narrow to
+  Today / This week / This month; To do / Done / All scope the list — the same
+  search + filter pattern as the admin order list, so the two screens feel alike.
+- Pinned by three UI tests (work log, search by id/name/address/date + the empty
+  state, and the scope/date chips), and verified on the deployed build in Chrome:
+  an order-ID search narrows the list from two cards to one, name and address
+  searches hit, nonsense text shows "No job matches that", 0 console errors.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,
