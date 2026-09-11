@@ -408,6 +408,27 @@ read as literal `import.meta.env.X` at build time. Reading them dynamically
 while every local test passed, since tests have no env either. That is a real trap
 worth remembering with Vite.
 
+#### Access keys are stored as hashes (2026-09-11)
+
+The REST endpoint is reachable with the same public anon key the app ships, so
+storing the key in plain text meant anyone who knew the URL could list the unused
+keys and join with one — found by running `scripts/verify_staff_auth.py` against
+the live project (it read a freshly created code back out of the API).
+
+`supabase/staff_auth_harden.sql` drops the `code` column and keeps only
+`code_hash` (sha256 of the upper-cased, trimmed code); `claim_join_key()` hashes
+what the technician types and compares. The code itself now exists in exactly two
+places: the admin's screen, once, at creation, and the message they send. The
+Access keys screen says so on the freshly-created card ("Copy it now — the portal
+keeps only a one-way hash"), and lists existing keys by their team, note and a
+short hash prefix rather than a secret.
+
+`scripts/verify_staff_auth.py` is the end-to-end proof against the live project:
+tables and function present, a valid key claims and creates the staff row, and a
+spent / revoked / expired / wrong-team key is refused, plus "the plaintext column
+is gone" and "stored keys are hashes". It creates its own fixtures and deletes
+them again (14/14 passing).
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

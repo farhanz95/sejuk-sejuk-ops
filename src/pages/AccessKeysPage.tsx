@@ -63,7 +63,7 @@ export default function AccessKeysPage() {
 
   const whatsappText = (key: JoinKey) =>
     encodeURIComponent(
-      `Sejuk Sejuk Service portal — your one-time access key is ${key.code}\n\n` +
+      `Sejuk Sejuk Service portal — your one-time access key is ${key.code ?? '(the code is shown only once, when it is created)'}\n\n` +
         `1. Open the portal and tap "Continue with Google"\n` +
         `2. Then "I have an access key" and enter the code (team: ${key.technician_name ?? 'any'})\n` +
         (key.expires_at ? `Expires ${new Date(key.expires_at).toLocaleDateString('en-GB')}\n` : '') +
@@ -140,7 +140,7 @@ export default function AccessKeysPage() {
         {error ? <p className="mt-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
       </Card>
 
-      {fresh ? (
+      {fresh?.code ? (
         <Card className="space-y-2 border-emerald-200 bg-emerald-50/60 p-4">
           <div className="text-sm font-semibold text-emerald-800">Key created — hand this to the technician</div>
           <div className="flex flex-wrap items-center gap-2">
@@ -149,7 +149,7 @@ export default function AccessKeysPage() {
               className="btn-secondary !py-2 text-xs"
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(fresh.code);
+                  await navigator.clipboard.writeText(fresh.code ?? '');
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 } catch {
@@ -176,6 +176,10 @@ export default function AccessKeysPage() {
             {fresh.technician_name ? ` · ${fresh.technician_name}` : ''} ·{' '}
             {fresh.expires_at ? `expires ${new Date(fresh.expires_at).toLocaleDateString('en-GB')}` : 'no expiry'}
           </p>
+          <p className="text-xs font-medium text-emerald-900">
+            Copy it now — the portal keeps only a one-way hash, so this code cannot be shown again. Create a new key if it
+            is lost.
+          </p>
         </Card>
       ) : null}
 
@@ -187,16 +191,22 @@ export default function AccessKeysPage() {
           keys.map((key) => {
             const state = keyState(key);
             return (
-              <Card key={key.code} className="flex flex-wrap items-center justify-between gap-3 p-3">
+              <Card key={key.code_hash} className="flex flex-wrap items-center justify-between gap-3 p-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <code className="font-mono text-sm text-slate-800">{key.code}</code>
+                    {/* The code itself is not stored (only its hash), so an existing
+                        key shows its identity claim instead of the secret. */}
+                    <span className="font-mono text-sm text-slate-700">
+                      {key.technician_name ? `key · ${key.technician_name}` : 'key · any team'}
+                    </span>
+                    <span className="text-[11px] text-slate-400">#{key.code_hash.slice(0, 6)}</span>
                     <span className={`chip border ${TONE_CLASS[state.tone]}`}>{state.label}</span>
                   </div>
                   <div className="mt-0.5 text-xs text-slate-500">
                     {key.role}
                     {key.technician_name ? ` · ${key.technician_name}` : ' · any team'}
                     {key.label ? ` · ${key.label}` : ''}
+                    {key.created_by ? ` · by ${key.created_by}` : ''}
                     {key.expires_at ? ` · expires ${new Date(key.expires_at).toLocaleDateString('en-GB')}` : ''}
                     {key.used_by_email ? ` · by ${key.used_by_email}` : ''}
                   </div>
@@ -211,11 +221,11 @@ export default function AccessKeysPage() {
                     WhatsApp
                   </a>
                   {!key.revoked_at && !key.used_at ? (
-                    <button className="btn-secondary !py-1.5 text-xs" onClick={() => void revokeKey(key.code).then(refresh)}>
+                    <button className="btn-secondary !py-1.5 text-xs" onClick={() => void revokeKey(key.code_hash).then(refresh)}>
                       Revoke
                     </button>
                   ) : (
-                    <button className="btn-ghost !py-1.5 text-xs" onClick={() => void deleteKey(key.code).then(refresh)}>
+                    <button className="btn-ghost !py-1.5 text-xs" onClick={() => void deleteKey(key.code_hash).then(refresh)}>
                       Delete
                     </button>
                   )}

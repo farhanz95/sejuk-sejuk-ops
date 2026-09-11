@@ -27,7 +27,10 @@ export interface StaffProfile {
 }
 
 export interface JoinKey {
-  code: string;
+  /** sha256 of the code — what the database stores (the code itself is never kept) */
+  code_hash: string;
+  /** present ONLY on the response that created the key: the one chance to copy it */
+  code?: string;
   role: Role;
   technician_name: string | null;
   label: string | null;
@@ -35,6 +38,7 @@ export interface JoinKey {
   revoked_at: string | null;
   used_at: string | null;
   used_by_email: string | null;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -59,13 +63,26 @@ interface AuthValue {
   /** Admin: manage the keys. */
   listKeys: () => Promise<JoinKey[]>;
   createKey: (input: { role: Role; technician: Technician | ''; label: string; expiresInDays: number | null }) => Promise<JoinKey>;
-  revokeKey: (code: string) => Promise<void>;
-  deleteKey: (code: string) => Promise<void>;
+  revokeKey: (codeHash: string) => Promise<void>;
+  deleteKey: (codeHash: string) => Promise<void>;
   listStaff: () => Promise<StaffProfile[]>;
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
+
+/**
+ * The database only ever stores this hash, so a leaked table row is useless: the
+ * code exists on the admin's screen (once) and in the technician's message.
+ * Uppercased and trimmed, matching claim_join_key().
+ */
+export async function hashKey(code: string): Promise<string> {
+  const bytes = new TextEncoder().encode(code.trim().toUpperCase());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 /** Keys look like SS-7F3K-9Q2M: unambiguous to read out over the phone. */
 export function generateKey(): string {
@@ -157,7 +174,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const listKeys = useCallback(async () => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('join_keys').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('join_keys')
+      .select('code_hash, role, technician_name, label, expires_at, revoked_at, used_at, used_by_email, created_by, created_at')
+      .order('created_at', { ascending: false });
     if (error) throw error;
     return (data ?? []) as JoinKey[];
   }, []);
@@ -166,12 +186,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async ({ role, technician, label, expiresInDays }) => {
       if (!supabase) throw new Error('Supabase is not configured in this build.');
       const code = generateKey();
+      const code_hash = await hashKey(code);
       const expires_at =
         expiresInDays && expiresInDays > 0 ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null;
       const { data, error } = await supabase
         .from('join_keys')
         .insert({
-          code,
+          code_hash,
           role,
           technician_name: technician || null,
           label: label || null,
@@ -181,20 +202,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select()
         .single();
       if (error) throw error;
-      return data as JoinKey;
+      // Hand the plain code back once, for this screen only.
+      return { ...(data as JoinKey), code };
     },
     [profile],
   );
 
-  const revokeKey = useCallback(async (code: string) => {
+  const revokeKey = useCallback(async (code_hash: string) => {
     if (!supabase) return;
-    const { error } = await supabase.from('join_keys').update({ revoked_at: new Date().toISOString() }).eq('code', code);
+    const { error } = await supabase
+      .from('join_keys')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('code_hash', code_hash);
     if (error) throw error;
   }, []);
 
-  const deleteKey = useCallback(async (code: string) => {
+  const deleteKey = useCallback(async (code_hash: string) => {
     if (!supabase) return;
-    const { error } = await supabase.from('join_keys').delete().eq('code', code);
+    const { error } = await supabase.from('join_keys').delete().eq('code_hash', code_hash);
     if (error) throw error;
   }, []);
 
