@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, signInAnonymously, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth';
 import { firebaseAuth, firebaseConfigured, googleProvider, supabase, supabaseConfigured } from '../lib/firebase';
-import { normalisePhone } from '../lib/domain';
+import { normalisePhone, pinHash } from '../lib/domain';
 import type { Role, Technician } from '../lib/types';
 
 /**
@@ -310,18 +310,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const adminSetPin = useCallback<AuthValue['adminSetPin']>(async (phone, pin) => {
     if (!supabase) return { ok: false, reason: 'Supabase is not configured in this build.' };
-    const { data, error } = await supabase.rpc('staff_admin_set_pin', { p_phone: normalisePhone(phone), p_pin: pin });
+    const normalised = normalisePhone(phone);
+    if (!/^\d{4}$/.test(pin)) return { ok: false, reason: 'The PIN must be exactly 4 digits.' };
+    // Hashed here and written straight to the row (see pinHash): the same value the SQL
+    // login function compares against, without needing that extra function deployed.
+    const { data, error } = await supabase
+      .from('staff_directory')
+      .update({ pin_hash: await pinHash(normalised, pin), pin_set_at: new Date().toISOString(), failed_attempts: 0, locked_until: null })
+      .eq('phone', normalised)
+      .select('id');
     if (error) return { ok: false, reason: setupHint(error.message) };
-    const row = firstRow<{ ok: boolean; reason: string }>(data);
-    return { ok: Boolean(row?.ok), reason: row?.reason ?? '' };
+    if (!data || data.length === 0) return { ok: false, reason: 'No registered number matches that.' };
+    return { ok: true, reason: 'PIN saved — give it to them in person or over the phone.' };
   }, []);
 
   const adminClearLockout = useCallback<AuthValue['adminClearLockout']>(async (phone) => {
     if (!supabase) return { ok: false, reason: 'Supabase is not configured in this build.' };
-    const { data, error } = await supabase.rpc('staff_admin_clear_lockout', { p_phone: normalisePhone(phone) });
+    const { error } = await supabase
+      .from('staff_directory')
+      .update({ failed_attempts: 0, locked_until: null })
+      .eq('phone', normalisePhone(phone));
     if (error) return { ok: false, reason: setupHint(error.message) };
-    const row = firstRow<{ ok: boolean; reason: string }>(data);
-    return { ok: Boolean(row?.ok), reason: row?.reason ?? '' };
+    return { ok: true, reason: 'Lockout cleared.' };
   }, []);
 
   const value = useMemo<AuthValue>(

@@ -155,6 +155,21 @@ export function formatPhoneInput(raw: string): string {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)} ${digits.slice(6, 11)}`;
 }
 
+/**
+ * The PIN hash, byte-for-byte the same as the SQL side
+ * (`encode(digest(phone || ':' || pin, 'sha256'), 'hex')`).
+ *
+ * The app hashes it in the browser and writes the column directly, so setting a PIN
+ * does not depend on a database function being deployed — the admin screen works on a
+ * fresh Supabase project. `supabase/staff_admin_pin.sql` keeps the same logic available
+ * server-side for projects that prefer it.
+ */
+export async function pinHash(phone: string, pin: string): Promise<string> {
+  const data = new TextEncoder().encode(`${normalisePhone(phone)}:${pin}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export function normalisePhone(raw: string): string {
   const digits = (raw ?? '').replace(/[^0-9]/g, '');
   return digits.startsWith('60') ? `0${digits.slice(2)}` : digits;

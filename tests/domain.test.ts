@@ -10,6 +10,7 @@ import {
   computeFinalAmount,
   formatPhoneInput,
   normalisePhone,
+  pinHash,
   phoneProblem,
   canAssign,
   canMarkDone,
@@ -255,3 +256,14 @@ test('a phone number formats itself as it is typed', () => {
   assert.equal(formatPhoneInput(''), '', 'empty stays empty');
 });
 
+
+test('the browser PIN hash is byte-identical to the SQL hash', async () => {
+  // The admin screen writes pin_hash itself, so it must produce exactly what the login
+  // function compares against: encode(digest(phone || ':' || pin, 'sha256'), 'hex'),
+  // with the phone normalised first.
+  const expected = 'e374eb097b194d3ccfc524b73996c8e38ff46a53bbf39f555cd6ad73792ab28b'; // sha256("0123456789:1234")
+  assert.equal(await pinHash('0123456789', '1234'), expected, 'digits only');
+  assert.equal(await pinHash('012-345 6789', '1234'), expected, 'a formatted number normalises to the same hash');
+  assert.equal(await pinHash('+60 12-345 6789', '1234'), expected, 'and so does an international one');
+  assert.notEqual(await pinHash('0123456789', '1235'), expected, 'a different PIN hashes differently');
+});

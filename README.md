@@ -650,8 +650,16 @@ Each row now offers, on its own line:
 
 A person registered with an email only shows *"Add a phone number to give this person a
 PIN"* instead of PIN buttons, and the row states whether a PIN is set, not set, or not
-applicable. `supabase/staff_admin_pin.sql` adds the three functions
-(`staff_admin_set_pin`, `staff_admin_reset_pin`, `staff_admin_clear_lockout`).
+applicable.
+
+**Setting a PIN needs no extra SQL.** The screen hashes the PIN in the browser
+(`pinHash()`, 04-helpers — `sha256(phone:pin)`, byte-identical to the SQL expression) and
+writes `pin_hash` straight to the row, so it works on a fresh project whose only setup is
+`staff_directory.sql`. Verified end to end: a PIN written that way signs in successfully
+through `staff_login_phone` and a wrong one is refused. `supabase/staff_admin_pin.sql` keeps
+the same logic as three database functions (`staff_admin_set_pin`,
+`staff_admin_reset_pin`, `staff_admin_clear_lockout`) for projects that would rather have it
+server-side; the client does not call them.
 
 **Honest limitation:** these run with the anon key, like the rest of this assessment build,
 so anyone who can call the API can call them. A real deployment would put them behind an
