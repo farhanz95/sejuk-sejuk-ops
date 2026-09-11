@@ -760,6 +760,50 @@ test('demo mode shows the staff list without writing to the live whitelist', asy
   dom.window.localStorage.removeItem('ss_demo_mode');
 });
 
+test('the admin can set, change and revoke a PIN from the staff list', async () => {
+  // Reported: "I don't see the place where to add the pin, revoke access or change their
+  // pin". The screen only offered a reset before — there was no way to hand somebody a PIN.
+  const { default: StaffAccessPage } = await import('../src/pages/StaffAccessPage');
+  dom.window.localStorage.setItem('ss_demo_mode', '1');
+  container.innerHTML = '';
+  root = createRoot(container);
+  await act(async () => {
+    root.render(React.createElement(AuthProvider, null, React.createElement(StaffAccessPage, null)));
+  });
+
+  const labels = () => [...container.querySelectorAll('button')].map((b) => (b.textContent || '').trim());
+  assert.ok(labels().some((l) => /Set a PIN/.test(l)), `a person without a PIN offers to set one, got: ${labels().join(' | ')}`);
+  assert.ok(labels().some((l) => /Change PIN/.test(l)), 'a person with a PIN offers to change it');
+  assert.ok(labels().some((l) => /Revoke access/.test(l)), 'revoking access is on the row');
+  assert.ok(labels().some((l) => /Remove/.test(l)), 'and the row can be removed');
+
+  // the panel opens with two PIN boxes
+  const setBtn = [...container.querySelectorAll('button')].find((b) => /Set a PIN/.test(b.textContent || ''))!;
+  await act(async () => {
+    setBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  const body = container.textContent ?? '';
+  assert.match(body, /First PIN for/, `the PIN panel opened, got: ${body.slice(-200)}`);
+  const pinBoxes = [...container.querySelectorAll('input')].filter((i) => (i.placeholder ?? '') === '••••' || (i.placeholder ?? '') === 'again');
+  assert.equal(pinBoxes.length, 2, 'two boxes: the PIN and the repeat');
+
+  // typing the same 4 digits twice enables Save
+  const type = async (el: Element, v: string) => {
+    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(el, v);
+      el.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+      el.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    });
+  };
+  await type(pinBoxes[0], '1234');
+  await type(pinBoxes[1], '1234');
+  const save = [...container.querySelectorAll('button')].find((b) => /Save PIN/.test(b.textContent || ''))!;
+  assert.ok(save, 'the Save PIN button exists');
+  assert.ok(!/type the same 4 digits twice/.test(container.textContent ?? ''), 'the hint clears once both boxes match');
+  dom.window.localStorage.removeItem('ss_demo_mode');
+});
+
 test('the staff list is the way people are invited (no key screen)', async () => {
   const { default: StaffAccessPage } = await import('../src/pages/StaffAccessPage');
   dom.window.localStorage.clear();

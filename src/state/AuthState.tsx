@@ -84,7 +84,12 @@ interface AuthValue {
   }) => Promise<DirectoryEntry>;
   revokePerson: (id: string, revoked: boolean) => Promise<void>;
   deletePerson: (id: string) => Promise<void>;
+  /** Forget a PIN so the person chooses a new one at their next sign-in. */
   resetPin: (id: string) => Promise<void>;
+  /** Hand somebody a PIN (set or change it) — admin-set, for first sign-in or on request. */
+  adminSetPin: (phone: string, pin: string) => Promise<LoginResult>;
+  /** Clear the wrong-PIN lockout without touching the PIN itself. */
+  adminClearLockout: (phone: string) => Promise<LoginResult>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -297,6 +302,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, []);
 
+  /**
+   * Admin side of the phone PIN (2026-09-11). Until this existed the admin could only
+   * CLEAR a PIN — there was no way to hand one over, which is what the office actually
+   * needs when somebody cannot get through the first-time "choose your PIN" step.
+   * `staff_admin_set_pin` hashes it the same way as the self-service path.
+   */
+  const adminSetPin = useCallback<AuthValue['adminSetPin']>(async (phone, pin) => {
+    if (!supabase) return { ok: false, reason: 'Supabase is not configured in this build.' };
+    const { data, error } = await supabase.rpc('staff_admin_set_pin', { p_phone: normalisePhone(phone), p_pin: pin });
+    if (error) return { ok: false, reason: setupHint(error.message) };
+    const row = firstRow<{ ok: boolean; reason: string }>(data);
+    return { ok: Boolean(row?.ok), reason: row?.reason ?? '' };
+  }, []);
+
+  const adminClearLockout = useCallback<AuthValue['adminClearLockout']>(async (phone) => {
+    if (!supabase) return { ok: false, reason: 'Supabase is not configured in this build.' };
+    const { data, error } = await supabase.rpc('staff_admin_clear_lockout', { p_phone: normalisePhone(phone) });
+    if (error) return { ok: false, reason: setupHint(error.message) };
+    const row = firstRow<{ ok: boolean; reason: string }>(data);
+    return { ok: Boolean(row?.ok), reason: row?.reason ?? '' };
+  }, []);
+
   const value = useMemo<AuthValue>(
     () => ({
       authReady,
@@ -314,8 +341,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       revokePerson,
       deletePerson,
       resetPin,
+      adminSetPin,
+      adminClearLockout,
     }),
-    [authReady, user, profile, loadingProfile, signInWithGoogle, phoneStatus, setPhonePin, signInWithPhone, signOutStaff, listDirectory, addPerson, revokePerson, deletePerson, resetPin],
+    [authReady, user, profile, loadingProfile, signInWithGoogle, phoneStatus, setPhonePin, signInWithPhone, signOutStaff, listDirectory, addPerson, revokePerson, deletePerson, resetPin, adminSetPin, adminClearLockout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -630,6 +630,34 @@ Measured on the deployed build at 414px: the customer line spans **91%** of the 
 with no overflow, and the tab bar shows **5** tabs on one row (Orders · Dashboard · AI
 Query · Activity · Staff), 0 console errors.
 
+#### The admin can now set a PIN, not just forget it (2026-09-11)
+
+Reported: *"At staff access I don't see the place where to add the pin, revoke access or
+change their pin."* The screen could only **clear** a PIN (so the person chose a new one at
+their next sign-in) — there was no way for the office to hand somebody a PIN, which is
+exactly what is needed when a technician cannot get through the first-time "choose your
+own PIN" step or asks for it to be changed.
+
+Each row now offers, on its own line:
+
+| Action | What it does |
+| --- | --- |
+| **🔑 Set a PIN / Change PIN** | Opens a small panel on the row (four digits, typed twice) and saves it — `staff_admin_set_pin`. |
+| **Forget PIN** | Clears it so the person chooses a new one next time (the old reset behaviour). |
+| **Clear lockout** | Appears only while a number is locked out, so the admin can end the 15-minute wait. |
+| **🚫 Revoke access / ✅ Allow access again** | Cuts off (or restores) sign-in for that person; takes effect on their next sign-in. |
+| **Remove** | Deletes the whitelist row. |
+
+A person registered with an email only shows *"Add a phone number to give this person a
+PIN"* instead of PIN buttons, and the row states whether a PIN is set, not set, or not
+applicable. `supabase/staff_admin_pin.sql` adds the three functions
+(`staff_admin_set_pin`, `staff_admin_reset_pin`, `staff_admin_clear_lockout`).
+
+**Honest limitation:** these run with the anon key, like the rest of this assessment build,
+so anyone who can call the API can call them. A real deployment would put them behind an
+authenticated admin role (Supabase auth plus a policy that checks it) — the app decides who
+*sees* the screen, which is a UI gate, not a server-side one.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

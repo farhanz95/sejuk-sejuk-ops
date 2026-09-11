@@ -65,7 +65,11 @@ const SAMPLE_PEOPLE: DirectoryEntry[] = [
  * time, so a revoked person is refused on their next attempt.
  */
 export default function StaffAccessPage() {
-  const { configured, listDirectory, addPerson, revokePerson, deletePerson, resetPin } = useAuth();
+  const { configured, listDirectory, addPerson, revokePerson, deletePerson, resetPin, adminSetPin, adminClearLockout } = useAuth();
+  // Which person's PIN panel is open, and the two typed values for it.
+  const [pinFor, setPinFor] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
+  const [pinAgain, setPinAgain] = useState('');
   const [people, setPeople] = useState<DirectoryEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -205,37 +209,77 @@ export default function StaffAccessPage() {
           people.map((person) => {
             const revoked = Boolean(person.revoked_at);
             const locked = person.locked_until ? new Date(person.locked_until) > new Date() : false;
+            const hasPhone = Boolean(person.phone);
+            const panelOpen = pinFor === person.id;
             return (
-              <Card key={person.id} className={`flex flex-wrap items-center justify-between gap-3 p-3 ${revoked ? 'opacity-70' : ''}`}>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-800">{person.display_name ?? person.email ?? person.phone}</span>
-                    <span className="chip bg-slate-100 text-slate-600">{person.role}</span>
-                    {person.technician_name ? <span className="chip bg-slate-100 text-slate-600">👷 {person.technician_name}</span> : null}
-                    {revoked ? <span className="chip border border-rose-200 bg-rose-50 text-rose-700">revoked</span> : null}
-                    {locked ? <span className="chip border border-amber-200 bg-amber-50 text-amber-800">PIN locked</span> : null}
-                  </div>
-                  <div className="mt-0.5 text-xs text-slate-500">
-                    {person.email ? `📧 ${person.email}` : '📧 no email'}
-                    {person.phone ? ` · 📱 ${person.phone}` : ''}
-                    {person.phone ? (person.pin_set_at ? ' · PIN set' : ' · PIN not set yet') : ''}
+              <Card key={person.id} className={`p-3 ${revoked ? 'opacity-70' : ''}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-800">{person.display_name ?? person.email ?? person.phone}</span>
+                      <span className="chip bg-slate-100 text-slate-600">{person.role}</span>
+                      {person.technician_name ? <span className="chip bg-slate-100 text-slate-600">👷 {person.technician_name}</span> : null}
+                      {revoked ? <span className="chip border border-rose-200 bg-rose-50 text-rose-700">revoked</span> : null}
+                      {locked ? <span className="chip border border-amber-200 bg-amber-50 text-amber-800">PIN locked</span> : null}
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      {person.email ? `📧 ${person.email}` : '📧 no email'}
+                      {hasPhone ? ` · 📱 ${person.phone}` : ' · 📱 no number'}
+                      {hasPhone ? (person.pin_set_at ? ' · PIN set' : ' · PIN not set yet') : ' · PIN not applicable'}
+                    </div>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {person.phone ? (
+
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {hasPhone ? (
                     <button
                       className="btn-secondary !py-1.5 text-xs"
+                      onClick={() => {
+                        setPinFor(panelOpen ? null : person.id);
+                        setPin('');
+                        setPinAgain('');
+                        setError(null);
+                        setFlash(null);
+                      }}
+                    >
+                      {panelOpen ? 'Close PIN' : person.pin_set_at ? '🔑 Change PIN' : '🔑 Set a PIN'}
+                    </button>
+                  ) : (
+                    <span className="text-[11px] text-slate-400">Add a phone number to give this person a PIN.</span>
+                  )}
+                  {hasPhone && person.pin_set_at ? (
+                    <button
+                      className="btn-ghost !py-1.5 text-xs"
                       title="Forget the PIN so the person chooses a new one at next sign-in"
                       onClick={() => (demo ? setError('Demo mode does not save anything.') : void resetPin(person.id).then(refresh))}
                     >
-                      Reset PIN
+                      Forget PIN
+                    </button>
+                  ) : null}
+                  {hasPhone && locked ? (
+                    <button
+                      className="btn-ghost !py-1.5 text-xs"
+                      title="Clear the 15-minute wrong-PIN lockout now"
+                      onClick={() =>
+                        demo
+                          ? setError('Demo mode does not save anything.')
+                          : void adminClearLockout(person.phone!).then((res) => {
+                              if (!res.ok) setError(res.reason);
+                              else {
+                                setFlash(res.reason);
+                                void refresh();
+                              }
+                            })
+                      }
+                    >
+                      Clear lockout
                     </button>
                   ) : null}
                   <button
                     className="btn-secondary !py-1.5 text-xs"
                     onClick={() => (demo ? setError('Demo mode does not save anything.') : void revokePerson(person.id, !revoked).then(refresh))}
                   >
-                    {revoked ? 'Allow again' : 'Revoke'}
+                    {revoked ? '✅ Allow access again' : '🚫 Revoke access'}
                   </button>
                   <button
                     className="btn-ghost !py-1.5 text-xs"
@@ -244,6 +288,64 @@ export default function StaffAccessPage() {
                     Remove
                   </button>
                 </div>
+
+                {/* The PIN panel: set or change it right here. This is what the office
+                    needs when somebody cannot get through the first-time "choose your
+                    own PIN" step, or asks for the PIN to be changed. */}
+                {panelOpen && hasPhone ? (
+                  <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-700">
+                      {person.pin_set_at ? 'New PIN' : 'First PIN'} for {person.phone}
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      Four digits. Give it to {person.display_name ?? 'them'} in person or over the phone — they sign in with
+                      the number and this PIN.
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <input
+                        className="input w-24 text-center text-lg tracking-[0.4em]"
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder="••••"
+                        value={pin}
+                        onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      />
+                      <input
+                        className="input w-24 text-center text-lg tracking-[0.4em]"
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder="again"
+                        value={pinAgain}
+                        onChange={(e) => setPinAgain(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      />
+                      <button
+                        className="btn-primary !py-1.5 text-xs"
+                        disabled={!demo && (pin.length !== 4 || pin !== pinAgain)}
+                        onClick={async () => {
+                          if (demo) {
+                            setError('Demo mode does not save anything.');
+                            return;
+                          }
+                          const res = await adminSetPin(person.phone!, pin);
+                          if (!res.ok) {
+                            setError(res.reason);
+                            return;
+                          }
+                          setFlash(`${person.display_name ?? person.phone}: ${res.reason}`);
+                          setPinFor(null);
+                          setPin('');
+                          setPinAgain('');
+                          await refresh();
+                        }}
+                      >
+                        Save PIN
+                      </button>
+                      <span className="text-[11px] text-slate-500">
+                        {pin.length === 4 && pin === pinAgain ? 'ready' : 'type the same 4 digits twice'}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
               </Card>
             );
           })
