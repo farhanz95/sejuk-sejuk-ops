@@ -609,6 +609,27 @@ login)" screen to a real account. `indexDestination()` sends an authenticated me
 staff to their own workspace (Admin → orders, Manager → review, Technician → jobs) and
 only shows the picker in demo mode.
 
+#### Phone layout: the cramped order card, and the missing fifth tab (2026-09-11)
+
+Reported with a screenshot: *"the cell of the service order is not well placed … even on
+mobile"* and *"in mobile admin cannot see the latest tab which is the staff access"*.
+
+**The card.** The customer line shared a row with the price and the status badge, so on a
+414px screen it was squeezed into ~90px and truncated to `Wo…`, with the problem clipped to
+`Water dripp…`. A phone card is now four full-width rows — order + status with the amount
+right-aligned, then the customer, then the problem, then when · who and the buttons — while
+`md:contents` still dissolves the top wrapper so desktop keeps the five-column row that
+fills the card. The same shape was applied to the manager review queue and the technician
+job cards, so all three lists read the same way.
+
+**The tab bar.** It was hard-capped at four items (`nav.slice(0, 4)`), so an admin's fifth
+tab was pushed onto a second row and disappeared. It now renders every tab with one grid
+column each, and a short label (`Staff`) keeps five labels readable at that width.
+
+Measured on the deployed build at 414px: the customer line spans **91%** of the card width
+with no overflow, and the tab bar shows **5** tabs on one row (Orders · Dashboard · AI
+Query · Activity · Staff), 0 console errors.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

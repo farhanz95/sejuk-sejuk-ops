@@ -324,22 +324,24 @@ export default function TechJobs() {
             const actionable = (o.status === 'Assigned' || o.status === 'In Progress') && o.assigned_technician?.toLowerCase() === actor.name.toLowerCase();
             return (
               <Card key={o.order_no} className="overflow-hidden">
-                <div className="flex items-start justify-between gap-3 p-4">
-                  <div className="min-w-0 flex-1">
+                <div className="p-4">
+                  {/* Phone: order + status on the first line with the amount, then the
+                      customer, address and problem across the full card width. */}
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-bold text-slate-800">{o.order_no}</span>
                       <StatusPill status={o.status} />
                     </div>
-                    <div className="mt-1 truncate text-sm font-medium text-slate-700">{o.customer_name}</div>
-                    <div className="line-clamp-2 text-xs text-slate-500">{o.address}</div>
-                    <div className="mt-1 line-clamp-2 text-sm text-slate-600">{o.problem_description}</div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="font-semibold text-slate-800">
-                      <MoneyText value={o.quoted_price} />
+                    <div className="shrink-0 text-right">
+                      <div className="font-semibold text-slate-800">
+                        <MoneyText value={o.quoted_price} />
+                      </div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400">{o.service_type}</div>
                     </div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400">{o.service_type}</div>
                   </div>
+                  <div className="mt-2 truncate text-sm font-medium text-slate-700">{o.customer_name}</div>
+                  <div className="line-clamp-2 text-xs text-slate-500">{o.address}</div>
+                  <div className="mt-1 line-clamp-2 text-sm text-slate-600">{o.problem_description}</div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/60 p-3">

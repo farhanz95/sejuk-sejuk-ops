@@ -42,7 +42,7 @@ export default function Layout() {
             { to: '/ai', label: 'AI Query', icon: '🤖' },
             { to: '/activity', label: 'Activity', icon: '🕘' },
             // Only offered where staff accounts exist — a demo session has no keys to manage.
-            ...(auth.configured ? [{ to: '/staff', label: 'Staff access', icon: '👥' }] : []),
+            ...(auth.configured ? [{ to: '/staff', label: 'Staff access', short: 'Staff', icon: '👥' }] : []),
           ];
 
   return (
@@ -254,8 +254,15 @@ export default function Layout() {
 
       {/* Mobile: bottom tab bar — thumb-reachable for technicians in the field. */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        <div className={`grid ${nav.length >= 4 ? 'grid-cols-4' : nav.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {nav.slice(0, nav.length >= 4 ? 4 : nav.length).map((n) => (
+        {/* One column per tab. It used to be capped at four, so an admin's fifth tab
+            (Staff access) was pushed onto a second row — reported as "in mobile admin
+            cannot see the latest tab". Five now, with a shorter label at that width. */}
+        <div
+          className={`grid ${
+            nav.length >= 5 ? 'grid-cols-5' : nav.length === 4 ? 'grid-cols-4' : nav.length === 3 ? 'grid-cols-3' : 'grid-cols-2'
+          }`}
+        >
+          {nav.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
@@ -280,7 +287,9 @@ export default function Layout() {
                   >
                     {n.icon}
                   </span>
-                  <span className={isActive ? 'font-bold' : ''}>{n.label}</span>
+                  <span className={`${isActive ? 'font-bold ' : ''}${nav.length >= 5 ? 'text-[10px] leading-tight' : ''}`}>
+                    {n.short ?? n.label}
+                  </span>
                 </>
               )}
             </NavLink>

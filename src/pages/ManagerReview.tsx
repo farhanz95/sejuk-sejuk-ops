@@ -194,18 +194,21 @@ export default function ManagerReview() {
               const flags = report ? supervisorFlags(o, report) : [];
               return (
                 <Card key={o.order_no} className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
+                  {/* Phone: order row, then the customer on its own full-width line (it
+                      used to be squeezed beside the amount and truncated). */}
+                  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+                  <div className="flex items-start justify-between gap-3 md:contents">
+                    <div className="min-w-0 md:order-1 md:flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-slate-800">{o.order_no}</span>
                         <StatusPill status={o.status} />
                         {flags.length ? <span className="chip bg-amber-100 text-amber-800">⚠ {flags.length} flag(s)</span> : null}
                       </div>
-                      <div className="mt-1 truncate text-sm text-slate-600">
+                      <div className="mt-1 hidden truncate text-sm text-slate-600 md:block">
                         {o.customer_name} · {o.service_type}
                       </div>
                     </div>
-                    <div className="shrink-0 text-right">
+                    <div className="shrink-0 text-right md:order-3">
                       <div className="text-xs text-slate-500">Quoted → final</div>
                       <div className="font-semibold text-slate-800">
                         <MoneyText value={o.quoted_price} /> → <MoneyText value={report?.final_amount ?? o.quoted_price} />
@@ -216,6 +219,11 @@ export default function ManagerReview() {
                         </div>
                       ) : null}
                     </div>
+                  </div>
+
+                  </div>
+                  <div className="mt-2 truncate text-sm text-slate-600 md:hidden">
+                    {o.customer_name} · {o.service_type}
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">

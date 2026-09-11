@@ -231,10 +231,21 @@ export default function AdminOrders() {
                   own column and the row fills the width instead of leaving a dead
                   middle. Order numbers put them in reading order (when/who before the
                   amount, even though the amount sits top-right on a phone). */}
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+              {/* A phone card is FOUR short rows, each one full width:
+                    (1) order + status ......... amount / service
+                    (2) customer · phone
+                    (3) what was wrong
+                    (4) when · who   ·   then the buttons
+                  The customer used to sit inside the same row as the amount, so on a
+                  phone it was squeezed between the badge and the price and truncated to
+                  "Wo…" with the problem clipped to "Water dripp…". From `md` the same
+                  facts become five columns that fill the card width (an earlier
+                  full-width stack left a dead middle on desktop), with md:contents
+                  dissolving the top wrapper so its two blocks are columns again. */}
+              <div className="flex flex-col md:flex-row md:items-center md:gap-4">
                 <div className="flex items-start justify-between gap-3 md:contents">
                   <button
-                    className="min-w-0 text-left md:order-1 md:w-[170px] md:shrink-0"
+                    className="min-w-0 text-left md:order-1 md:w-[168px] md:shrink-0"
                     onClick={() => navigate(`/orders/${o.order_no}`)}
                   >
                     <div className="flex flex-wrap items-center gap-2">
@@ -246,18 +257,6 @@ export default function AdminOrders() {
                     </div>
                   </button>
 
-                  <button
-                    className="min-w-0 flex-1 text-left md:order-2"
-                    onClick={() => navigate(`/orders/${o.order_no}`)}
-                  >
-                    <div className="truncate text-sm text-slate-600">
-                      {o.customer_name} · {o.phone}
-                    </div>
-                    <div className="mt-0.5 line-clamp-2 text-xs text-slate-500 md:line-clamp-1">
-                      {o.problem_description}
-                    </div>
-                  </button>
-
                   <div className="shrink-0 text-right md:order-4 md:w-[104px]">
                     <div className="font-semibold text-slate-800">
                       <MoneyText value={o.quoted_price} />
@@ -266,7 +265,20 @@ export default function AdminOrders() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-x-3 text-[11px] text-slate-500 md:order-3 md:w-[178px] md:shrink-0 md:flex-col md:items-start md:gap-0.5">
+                {/* full width on a phone, so the name and the problem are readable */}
+                <button
+                  className="mt-2 block w-full min-w-0 text-left md:order-2 md:mt-0 md:flex-1"
+                  onClick={() => navigate(`/orders/${o.order_no}`)}
+                >
+                  <div className="truncate text-sm text-slate-600">
+                    {o.customer_name} · {o.phone}
+                  </div>
+                  <div className="mt-0.5 line-clamp-2 text-xs text-slate-500 md:line-clamp-1">
+                    {o.problem_description}
+                  </div>
+                </button>
+
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 md:order-3 md:mt-0 md:w-[178px] md:shrink-0 md:flex-col md:items-start md:gap-0.5">
                   <span className="whitespace-nowrap">
                     <TimeText iso={o.created_at} />
                   </span>
@@ -275,7 +287,7 @@ export default function AdminOrders() {
                   </span>
                 </div>
 
-                <div className="flex shrink-0 flex-wrap items-center gap-2 md:order-5 md:justify-end">
+                <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2 md:order-5 md:mt-0 md:justify-end">
                   <button className="btn-secondary !py-1.5 text-xs" onClick={() => navigate(`/orders/${o.order_no}`)}>
                     Open
                   </button>
