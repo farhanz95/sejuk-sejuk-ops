@@ -102,7 +102,10 @@ begin
     return query select false, 'A PIN is already set for this number. Enter it, or ask your admin to reset it.'::text;
     return;
   end if;
-  update staff_directory set pin_hash = staff_pin_ok(p, p_pin, encode(digest(p || ':' || p_pin, 'sha256'), 'hex')),
+  -- Store the hash itself. (An earlier version wrapped this in staff_pin_ok(),
+  -- which COMPARES, so the column ended up holding the text 'true' and every
+  -- correct PIN was then refused — caught by scripts/verify_staff_login.py.)
+  update staff_directory set pin_hash = encode(digest(p || ':' || p_pin, 'sha256'), 'hex'),
                             pin_set_at = now(), failed_attempts = 0
    where id = r.id;
   return query select true, 'PIN saved.'::text;

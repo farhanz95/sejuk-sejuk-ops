@@ -556,6 +556,23 @@ pin the behaviour (`canOpen('Admin', '/staff')` true; Manager and Technician fal
 In demo mode the screen shows **sample** entries and says they are not saved — a
 reviewer poking at it must not write rows into the live whitelist.
 
+#### The PIN that was refused (2026-09-11) — caught before it shipped
+
+`staff_set_phone_pin` stored `staff_pin_ok(...)` — a function that **compares** a PIN
+with a hash — so `pin_hash` ended up holding the text `'true'` and every later login
+refused a correct PIN with *"That PIN is not right."* Nothing in the unit suite could
+see it: those tests never touch the database.
+
+`scripts/verify_staff_login.py` now exercises the real functions end to end — set a
+PIN, refuse a wrong one, sign in with the right one, lock after five misses, reset
+from the admin side — and asserts the stored value is 64 hex characters rather than a
+flag. It cleans up after itself (probe session deleted, test PIN cleared). Run it
+after any change to the staff SQL; it reported the bug as `pin_hash='true'` before the
+fix and 13/13 after.
+
+`supabase/fix_staff_pin_hash.sql` is the one-function patch for a project that
+already ran the earlier version.
+
 #### Bootstrapping the first admin
 
 The whitelist decides who may sign in, which raises the obvious question: how does
