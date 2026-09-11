@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth, type DirectoryEntry } from '../state/AuthState';
 import { TECHNICIANS, type Role, type Technician } from '../lib/types';
-import { phoneProblem } from '../lib/domain';
+import { formatPhoneInput, phoneProblem } from '../lib/domain';
 import { Card, EmptyState, Field, SectionTitle } from '../components/ui';
 import { isDemoMode } from '../lib/demoMode';
 
@@ -137,7 +137,7 @@ export default function StaffAccessPage() {
               className={`input ${phoneIssue ? '!border-rose-300 !bg-rose-50' : ''}`}
               inputMode="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
               placeholder="012-345 6789"
             />
           </Field>

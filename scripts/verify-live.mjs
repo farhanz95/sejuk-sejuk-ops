@@ -60,21 +60,40 @@ const clickText = (page, label) =>
     return !!el;
   }, label);
 
+/**
+ * The portal now opens on a sign-in screen (email / phone number), so every visit
+ * starts by choosing the reviewer path — demo mode, which runs on the seeded
+ * dataset without an account. Without this the smoke test sat on the sign-in page
+ * and reported a missing field as a failure.
+ */
+async function enterPortal(page, url) {
+  await page.goto(url, { waitUntil: 'networkidle2' });
+  await new Promise((r) => setTimeout(r, 1200));
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => /Continue in demo mode/i.test(x.textContent || ''));
+    if (b) b.click();
+  });
+  await new Promise((r) => setTimeout(r, 2000));
+}
+
 try {
   /* ---------------------------------------------------------------- admin --- */
   const page = await browser.newPage();
   watch(page, 'desktop');
   await page.setViewport({ width: 1366, height: 950 });
-  await page.goto(BASE, { waitUntil: 'networkidle2' });
+
+
+  await enterPortal(page, BASE);
   await sleep(1200);
   const badge = await page.evaluate(() => (document.body.innerText.includes('supabase') ? 'supabase' : 'demo data'));
   await shot(page, '01-landing', `landing (data mode: ${badge})`);
 
-  await clickText(page, 'Continue as Admin');
-  await sleep(1400);
+  await page.select('select', 'Admin:Admin');
+  await sleep(1300);
   await shot(page, '02-admin-orders', 'order list with status filters');
 
   /* ------------------------------- document understanding (advanced AI) --- */
+  const orderNosBefore = await page.evaluate(() => [...new Set(document.body.innerText.match(/SS-\d{4}-\d{4}/g) || [])]);
   await clickText(page, '+ New order');
   await sleep(700);
   const opened = await clickText(page, 'Pull fields from a document');
@@ -109,7 +128,13 @@ try {
   });
   await clickText(page, 'Create order');
   await sleep(2500);
-  results.order_no = await page.evaluate(() => (document.body.innerText.match(/Order (SS-\d{4}-\d{4}) created/) ?? [])[1] ?? null);
+  results.order_no = await page.evaluate((before) => {
+    // the toast wording can change; the list gaining a new order number cannot
+    const now = [...new Set(document.body.innerText.match(/SS-\d{4}-\d{4}/g) || [])];
+    const fresh = now.filter((n) => !before.includes(n));
+    const toast = (document.body.innerText.match(/Order (SS-\d{4}-\d{4}) created/) ?? [])[1];
+    return toast ?? fresh[0] ?? null;
+  }, [...orderNosBefore]);
   await shot(page, '05-order-created', `created ${results.order_no}`);
 
   await clickText(page, 'Open order summary');
@@ -121,12 +146,13 @@ try {
   const mobile = await browser.newPage();
   watch(mobile, 'mobile');
   await mobile.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
-  await mobile.goto(BASE, { waitUntil: 'networkidle2' });
+  await enterPortal(mobile, BASE);
+  await mobile.select('select', 'Technician:Ali');
+  await sleep(1300);
+  await mobile.goto(`${BASE}/jobs`, { waitUntil: 'networkidle2' });
+  await sleep(1800);
   await sleep(1400);
-  await mobile.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Ali');
-    b?.click();
-  });
+  // (the role is chosen from the header select — the old mock picker is gone)
   await sleep(1600);
   await shot(mobile, '07-tech-queue', 'technician queue (phone viewport, Ali)');
 
@@ -137,7 +163,14 @@ try {
     if (btn) btn.click();
     return { cardFound: !!card, startClicked: !!btn };
   }, results.order_no);
-  await sleep(2000);
+  await sleep(1200);
+  // the confirmation panel the app shows before changing state
+  results.start_confirmed = await mobile.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => /Yes, start job/i.test(b.textContent || ''));
+    if (btn) btn.click();
+    return Boolean(btn);
+  });
+  await sleep(2400);
   results.status_after_start = await mobile.evaluate((orderNo) => {
     const card = [...document.querySelectorAll('div.card')].find((c) => orderNo && c.textContent.includes(orderNo));
     return card ? (card.textContent.match(/In Progress|Assigned/) || [''])[0] : null;
@@ -164,7 +197,13 @@ try {
   await sleep(600);
   await shot(mobile, '09-tech-complete-form', 'completion form, final amount auto-calculated');
   await clickText(mobile, 'Mark job as done');
-  await sleep(3000);
+  await sleep(1200);
+  results.done_confirmed = await mobile.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => /Yes, mark it as done/i.test(b.textContent || ''));
+    if (btn) btn.click();
+    return Boolean(btn);
+  });
+  await sleep(3200);
 
   results.whatsapp = await mobile.evaluate(() => {
     const pre = document.querySelector('pre');
@@ -180,7 +219,11 @@ try {
   const mgr = await browser.newPage();
   watch(mgr, 'manager');
   await mgr.setViewport({ width: 1366, height: 950 });
+  await enterPortal(mgr, BASE);
+  await mgr.select('select', 'Manager:Manager');
+  await sleep(1300);
   await mgr.goto(`${BASE}/review`, { waitUntil: 'networkidle2' });
+  await sleep(1800);
   await sleep(1500);
   await mgr.select('select', 'Manager:Manager').catch(() => {});
   await sleep(1600);
@@ -191,7 +234,11 @@ try {
   await shot(mgr, '12-manager-approved', 'job approved → Reviewed');
 
   /* ---------------------------------------------------- KPI + insight AI --- */
+  await enterPortal(mgr, BASE);
+  await mgr.select('select', 'Manager:Manager');
+  await sleep(1300);
   await mgr.goto(`${BASE}/dashboard`, { waitUntil: 'networkidle2' });
+  await sleep(1800);
   await sleep(2000);
   await clickText(mgr, 'Analyse this period');
   await sleep(14000);
@@ -205,7 +252,11 @@ try {
   await shot(mgr, '13-dashboard-insight', `KPI + AI insight (${results.insight.query}, ${results.insight.planner})`);
 
   /* --------------------------------------------------------- AI window --- */
+  await enterPortal(mgr, BASE);
+  await mgr.select('select', 'Manager:Manager');
+  await sleep(1300);
   await mgr.goto(`${BASE}/ai`, { waitUntil: 'networkidle2' });
+  await sleep(1800);
   await sleep(1500);
   await mgr.type('input[placeholder="e.g. What jobs did technician Ali complete last week?"]', 'How much did we bill this week and what is still outstanding?');
   await clickText(mgr, 'Ask');
@@ -221,7 +272,11 @@ try {
   await shot(mgr, '14-ai-window', `AI answer (planner: ${results.ai_answer.planner})`);
 
   /* -------------------------------------------------------------- activity --- */
+  await enterPortal(mgr, BASE);
+  await mgr.select('select', 'Manager:Manager');
+  await sleep(1300);
   await mgr.goto(`${BASE}/activity`, { waitUntil: 'networkidle2' });
+  await sleep(1800);
   await sleep(1600);
   await shot(mgr, '15-activity', 'audit trail + WhatsApp notification log');
 } catch (err) {

@@ -129,6 +129,32 @@ export function phoneProblem(raw: string): string | null {
 }
 
 /** Canonical form for storage: 0123456789 (the 60 prefix dropped). */
+/**
+ * Live formatting for a Malaysian phone number as it is typed: `012-345 6789`.
+ *
+ * Grouped the way people here write them — mobile numbers are 3-3-4 (`012-345 6789`),
+ * landlines 2-4-4 (`03-1234 5678`) — and `+60`/`60` is folded back to a leading `0` so
+ * a pasted international number looks local again. Anything that is not a digit is
+ * dropped, so a pasted `+60 12-345 6789` becomes `012-345 6789` rather than garbled.
+ *
+ * Returns partial groups while the person is still typing (`012`, `012-3`), which is
+ * what makes the field feel responsive rather than reformatting under the cursor.
+ */
+export function formatPhoneInput(raw: string): string {
+  let digits = raw.replace(/[^0-9]/g, '');
+  if (digits.startsWith('60')) digits = `0${digits.slice(2)}`;
+  if (!digits) return '';
+  if (digits.length <= 3) return digits;
+  const landline = digits[1] !== '1'; // 03/04/05/… versus 01x
+  if (landline) {
+    if (digits.length <= 6) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    if (digits.length <= 10) return `${digits.slice(0, 2)}-${digits.slice(2, 6)} ${digits.slice(6)}`;
+    return `${digits.slice(0, 2)}-${digits.slice(2, 6)} ${digits.slice(6, 10)}`;
+  }
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)} ${digits.slice(6, 11)}`;
+}
+
 export function normalisePhone(raw: string): string {
   const digits = (raw ?? '').replace(/[^0-9]/g, '');
   return digits.startsWith('60') ? `0${digits.slice(2)}` : digits;

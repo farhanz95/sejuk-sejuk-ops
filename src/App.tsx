@@ -2,7 +2,7 @@ import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import { useApp, ROLE_OPTIONS } from './state/AppState';
 import { homeForRole } from './components/RequireRole';
-import { TECHNICIANS } from './lib/types';
+import { Role, TECHNICIANS } from './lib/types';
 import { Card, EmptyState } from './components/ui';
 import AdminOrders from './pages/AdminOrders';
 import OrderDetail from './pages/OrderDetail';
@@ -18,6 +18,24 @@ import StaffAccessPage from './pages/StaffAccessPage';
 import { useAuth } from './state/AuthState';
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
+
+/**
+ * `/` for a signed-in member of staff must be their own workspace, not the mock
+ * role picker. Reported: "after I sign in using google it goes to nowhere" — the
+ * portal loaded the real account and then showed the demo screen with "Pick a role
+ * to start (mock login)", which looks like a dead end and invites the wrong click.
+ */
+export function indexDestination(authManaged: boolean, role: Role): string | null {
+  return authManaged ? homeForRole(role) : null; // null → show the demo landing
+}
+
+function IndexRoute() {
+  const auth = useAuth();
+  const { actor } = useApp();
+  const destination = indexDestination(auth.configured && Boolean(auth.profile), actor.role);
+  if (destination) return <Navigate to={destination} replace />;
+  return <Landing />;
+}
 
 function Landing() {
   const { actor, setActor, mode, ready, data } = useApp();
@@ -128,7 +146,7 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AuthGate><Layout /></AuthGate>}>
-        <Route index element={<Landing />} />
+        <Route index element={<IndexRoute />} />
 
         {/* Technician: own queue and own history only */}
         <Route path="jobs" element={<RequireRole roles={['Technician']}><TechJobs /></RequireRole>} />

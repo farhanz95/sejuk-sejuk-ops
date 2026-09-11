@@ -718,6 +718,16 @@ test('the phone step has a small way back, and no sign-out before signing in', a
   assert.ok(/Login using email/.test(screen.text()), 'back returns to the two choices');
 });
 
+test('a signed-in member of staff lands in their own workspace, never the demo picker', async () => {
+  const { indexDestination } = await import('../src/App');
+  // Reported: "after I sign in using google it goes to nowhere" — `/` showed the mock
+  // "Pick a role to start (mock login)" screen to a real account.
+  assert.equal(indexDestination(true, 'Admin'), '/orders', 'an admin goes to the order desk');
+  assert.equal(indexDestination(true, 'Manager'), '/review', 'a manager goes to the review queue');
+  assert.equal(indexDestination(true, 'Technician'), '/jobs', 'a technician goes to their jobs');
+  assert.equal(indexDestination(false, 'Admin'), null, 'demo mode still shows the picker');
+});
+
 test('an admin can actually open the Staff access tab (the guard used to bounce it)', async () => {
   // Reported: "the staff access tab I cant seem to access from admin". Cause: the
   // route moved to /staff but ROLE_SCREENS still listed the old /access-keys, so
@@ -763,6 +773,31 @@ test('the staff list is the way people are invited (no key screen)', async () =>
   assert.match(body, /Staff access|not configured/i, `staff access screen renders, got: ${body.slice(0, 120)}`);
 });
 
+
+test('two dialogs stacked: a state change in the lower one must not close the upper one', async () => {
+  // Reading a document happens inside the New order dialog. Cleaning up the lower
+  // dialog's history entry fired popstate, and the handler read that as "back was
+  // pressed" — closing the document reader on top. Reported from the live build as
+  // "Use these fields does nothing".
+  await mount('/');
+  await selectRole('Admin');
+  await mount('/orders', { keepRole: true });
+  await clickText('+ New order');
+  assert.match(text(), /New service order/, 'the order dialog is open');
+
+  await clickText('Pull fields from a document');
+  const readerBefore = /Read a document|Pull fields from a document/.test(text());
+  assert.ok(readerBefore, 'the document reader opened on top');
+
+  // typing in the reader is a state change in the dialog stack
+  const area = [...container.querySelectorAll('textarea')].pop()!;
+  assert.ok(area, 'the paste area exists');
+  await typeInto(area, 'Quotation — Sejuk Sejuk Service\nCustomer: Nadia, 013-222 4455');
+  await act(async () => {});
+
+  assert.match(text(), /Read a document|Pull fields from a document/, 'the reader is still open');
+  assert.match(text(), /New service order/, 'and the order dialog is still behind it');
+});
 
 test('a modal survives state changes inside it (typing, filling, pressing buttons)', async () => {
   // Reported as "clicking the sample-data button / Mark job as done closes the

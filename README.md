@@ -586,6 +586,29 @@ the first admin get in? Once, in Supabase → Table Editor → `staff_directory`
 
 Sign in with Google, then add everyone else from **👥 Staff access**.
 
+#### Two dialogs at once, and a phone field that formats itself (2026-09-11)
+
+**The document reader closed on its own.** Reading a document happens inside the New
+order dialog, so two dialogs are open. Releasing the lower dialog's history entry
+called `history.back()`, and the `popstate` that fires was read by the handler as
+"back was pressed" — so it closed the *upper* dialog. "Use these fields" then filled
+nothing. `modalStack.ts` now counts releases it performs itself and ignores the event
+they raise, and a test opens both dialogs and types in the upper one.
+
+Found by the smoke test, which had been reporting `document_read` as passing on its
+own — the failure was one step later, where the fields were empty.
+
+**The phone field formats as you type.** `0123456789` becomes `012-345 6789`, a
+landline keeps its own grouping (`03-1234 5678`), and a pasted `+60 12-345 6789` is
+folded back to a local-looking number. Applied to the sign-in screen and to the admin
+form, so a number reads the same everywhere it is entered.
+
+**Signed-in staff no longer land on the demo role picker.** Reported: *"after I sign in
+using google it goes to nowhere"*. `/` rendered the mock "Pick a role to start (mock
+login)" screen to a real account. `indexDestination()` sends an authenticated member of
+staff to their own workspace (Admin → orders, Manager → review, Technician → jobs) and
+only shows the picker in demo mode.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

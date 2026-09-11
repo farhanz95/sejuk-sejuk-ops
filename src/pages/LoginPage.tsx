@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../state/AuthState';
 import { enterDemoMode } from '../lib/demoMode';
-import { phoneProblem } from '../lib/domain';
+import { formatPhoneInput, phoneProblem } from '../lib/domain';
 
 /**
  * The way in.
@@ -171,7 +171,7 @@ export default function LoginPage() {
                 className="input"
                 inputMode="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
                 placeholder="012-345 6789"
                 autoFocus
               />

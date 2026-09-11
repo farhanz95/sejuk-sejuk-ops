@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {
   amountProblem,
   computeFinalAmount,
+  formatPhoneInput,
   normalisePhone,
   phoneProblem,
   canAssign,
@@ -238,3 +239,19 @@ test('the completion report validates the money fields it collects', () => {
   const overPaid = validateCompletion({ ...draft, payment_amount: '500' }, 320);
   assert.ok(overPaid.some((e) => /cannot exceed/i.test(e)), JSON.stringify(overPaid));
 });
+
+test('a phone number formats itself as it is typed', () => {
+  // Requested: typing a number should look like 012-345 6789, with the dash and the
+  // space, so the field reads like a phone number rather than a run of digits.
+  assert.equal(formatPhoneInput('0123456789'), '012-345 6789', 'mobile number');
+  assert.equal(formatPhoneInput('0132224455'), '013-222 4455', 'another mobile');
+  assert.equal(formatPhoneInput('+60 12-345 6789'), '012-345 6789', 'a pasted international number looks local');
+  assert.equal(formatPhoneInput('60123456789'), '012-345 6789', 'so does a number without the plus');
+  assert.equal(formatPhoneInput('03-1234 5678'), '03-1234 5678', 'landline keeps its own grouping');
+  assert.equal(formatPhoneInput('0312345678'), '03-1234 5678', 'landline typed bare');
+  assert.equal(formatPhoneInput('012'), '012', 'partial input is left alone');
+  assert.equal(formatPhoneInput('0123'), '012-3', 'and gains the dash as it goes');
+  assert.equal(formatPhoneInput('abc'), '', 'letters are dropped entirely');
+  assert.equal(formatPhoneInput(''), '', 'empty stays empty');
+});
+
