@@ -476,6 +476,20 @@ them again (14/14 passing).
   a filled icon pill and a bold label (and `aria-current="page"` for screen
   readers).
 
+#### Header consistency on phones (2026-09-11)
+
+Two reports about the same area.
+
+- **Two "Sign out" buttons** on the join screen: the page rendered its own and the
+  auth gate added a second, fixed one. The gate's copy is gone.
+- **The header looked broken and ate the screen.** A translucent header let the
+  order cards show through it, and on a phone the controls stacked into four rows
+  — 164px of the viewport. Now: opaque on phones (the frosted glass stays on
+  desktop, where there is room for it to look deliberate), and the role switch
+  plus the demo controls (badge, reset, exit) moved behind a **⋯** menu, leaving
+  one compact row. Measured on the deployed build: **66px**, nothing showing
+  through, the menu opens with the role choices.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

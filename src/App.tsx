@@ -107,7 +107,7 @@ function NotFound() {
  *   stops an arbitrary Google account from reading operations data.
  */
 function AuthGate({ children }: { children: ReactNode }) {
-  const { configured, authReady, user, profile, loadingProfile, signOutStaff } = useAuth();
+  const { configured, authReady, user, profile, loadingProfile } = useAuth();
   const demo = typeof localStorage !== 'undefined' && localStorage.getItem('ss_demo_mode') === '1';
   const { pathname } = useLocation();
   // `/join` is a route in its own right: the sign-in screen links to it, and the
@@ -126,14 +126,9 @@ function AuthGate({ children }: { children: ReactNode }) {
   }
   if (!user) return wantsJoin ? <JoinWithKeyPage /> : <SignInPage />;
   if (loadingProfile || !profile) {
-    return (
-      <>
-        <JoinWithKeyPage />
-        <button className="fixed bottom-4 right-4 btn-ghost text-xs" onClick={() => void signOutStaff()}>
-          Sign out
-        </button>
-      </>
-    );
+    // The join screen already offers its own Sign out, so the gate must not add a
+    // second one — two identical buttons sat next to each other on the phone.
+    return <JoinWithKeyPage />;
   }
   return <>{children}</>;
 }
