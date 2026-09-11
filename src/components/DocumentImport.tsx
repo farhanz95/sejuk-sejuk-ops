@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { describeExtraction, EMPTY_FIELDS, extractFieldsHeuristically, FIELD_LABELS, type ExtractedFields } from '../lib/doc-fields';
+import { apiEndpoint } from '../lib/ask-ai';
 import { Card, Field, Modal } from './ui';
 
 interface Result {
@@ -81,7 +82,7 @@ export default function DocumentImport({
     setError(null);
     setResult(null);
     try {
-      const res = await fetch('/api/extract-document', {
+      const res = await fetch(apiEndpoint().replace(/ai-query$/, 'extract-document'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, filename }),

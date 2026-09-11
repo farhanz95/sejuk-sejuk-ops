@@ -298,7 +298,24 @@ export function enforceRmCurrency(answer: string): string {
 
 export default async function handler(req: { method?: string; body?: Body }, res: {
   status: (code: number) => { json: (body: unknown) => void };
+  setHeader?: (name: string, value: string) => void;
 }): Promise<void> {
+  /**
+   * CORS. The app is hosted twice — Vercel (which serves this endpoint itself) and
+   * Firebase Hosting, which is static and can only send an OPTIONS/POST from another
+   * origin. Without these headers the Firebase copy fell back to the in-browser answer
+   * ("source: browser") and a reviewer there never saw the AI path. The endpoint runs on
+   * public demo data and returns nothing sensitive, so `*` is the honest setting for this
+   * assessment build.
+   */
+  res.setHeader?.('Access-Control-Allow-Origin', '*');
+  res.setHeader?.('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader?.('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader?.('Vary', 'Origin');
+  if (req.method === 'OPTIONS') {
+    res.status(204).json({});
+    return;
+  }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Use POST' });
     return;

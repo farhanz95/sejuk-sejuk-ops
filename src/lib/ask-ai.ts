@@ -30,9 +30,29 @@ export interface AskResult {
   endpointDown?: string;
 }
 
+/**
+ * Where the AI endpoint lives.
+ *
+ * On Vercel the API is part of the same deployment, so a relative path is right. Firebase
+ * Hosting is static — it answers /api/ai-query with index.html, which the client read as "no
+ * endpoint" and fell back to the in-browser answer. A static host therefore calls the Vercel
+ * deployment, which sends CORS headers for exactly this case.
+ *
+ * `VITE_AI_ENDPOINT` overrides both, for a different API host.
+ */
+const STATIC_HOST_API = 'https://sejuk-sejuk-ops-five.vercel.app/api/ai-query';
+
+export function apiEndpoint(): string {
+  const override = import.meta.env.VITE_AI_ENDPOINT;
+  if (override) return override;
+  if (typeof window === 'undefined') return '/api/ai-query';
+  // Any host that can run the API keeps it same-origin (no CORS round-trip).
+  return /(^|\.)vercel\.app$/.test(window.location.hostname) ? '/api/ai-query' : STATIC_HOST_API;
+}
+
 export async function askAi(question: string, data: OpsData, mode: 'supabase' | 'demo'): Promise<AskResult> {
   try {
-    const res = await fetch('/api/ai-query', {
+    const res = await fetch(apiEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // Demo mode has no database behind the endpoint, so the seeded dataset

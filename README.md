@@ -666,6 +666,27 @@ so anyone who can call the API can call them. A real deployment would put them b
 authenticated admin role (Supabase auth plus a policy that checks it) — the app decides who
 *sees* the screen, which is a UI gate, not a server-side one.
 
+#### The AI path on the static host (2026-09-11)
+
+A reviewer on **Firebase Hosting** asked *"is this expected?"* about an answer tagged
+`planner: heuristic · answer: template · source: browser`, with the note *"this deployment
+has no server-side AI endpoint (static hosting)"*. It was expected — hosting is static there,
+so `/api/ai-query` returned `index.html` and the client fell back to the in-browser answer.
+
+But a reviewer should not have to know which link they opened. Two changes:
+
+* `apiEndpoint()` (`src/lib/ask-ai.ts`) resolves the host: Vercel keeps the API same-origin,
+  anything else (Firebase Hosting) calls the Vercel deployment, and `VITE_AI_ENDPOINT`
+  overrides both. The document reader uses the same helper.
+* Both API handlers send CORS headers and answer the `OPTIONS` preflight, so the
+  cross-origin call is allowed. The endpoints serve public demo data and return nothing
+  sensitive, which is why `*` is the honest setting for this build.
+
+Verified in the browser on both hosts — `planner: llm`, `answer: llm`, `source: supabase`,
+no fallback notice, the controlled query shown, 0 console errors — and with curl against the
+API from the Firebase origin (preflight `204` with `Access-Control-Allow-Origin: *`, then a
+`200` answer through the model).
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,

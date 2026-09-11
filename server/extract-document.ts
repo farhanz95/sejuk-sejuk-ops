@@ -109,8 +109,22 @@ async function extractWithLlm(cfg: { key: string; baseUrl: string; model: string
 
 export default async function handler(
   req: { method?: string; body?: { text?: string; filename?: string } },
-  res: { status: (code: number) => { json: (body: unknown) => void } },
+  res: {
+    status: (code: number) => { json: (body: unknown) => void };
+    setHeader?: (name: string, value: string) => void;
+  },
 ): Promise<void> {
+  // CORS for the Firebase-hosted copy of the app (see server/ai-query.ts): without it the
+  // document reader fell back to the local rules there and a reviewer saw "read by: local
+  // rules" no matter how good the paste was.
+  res.setHeader?.('Access-Control-Allow-Origin', '*');
+  res.setHeader?.('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader?.('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader?.('Vary', 'Origin');
+  if (req.method === 'OPTIONS') {
+    res.status(204).json({});
+    return;
+  }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Use POST' });
     return;
