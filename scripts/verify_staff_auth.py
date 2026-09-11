@@ -163,6 +163,32 @@ finally:
     print('leftover test keys:', left_keys if isinstance(left_keys, list) else left_keys)
     print('leftover probe accounts:', left_staff if isinstance(left_staff, list) else left_staff)
 
+# ------------------------------------------------- technicians without an email
+try:
+    code = 'SS-TEST-PH0N'
+    call('POST', '/rest/v1/join_keys', {
+        'code_hash': hash_key(code), 'role': 'Technician', 'technician_name': 'John',
+        'label': 'automated no-email check', 'created_by': 'verify-script',
+    }, headers={'Prefer': 'return=representation'})
+    created_codes.append(code)
+
+    uid = 'probe-uid-phone'
+    probe_uids.append(uid)
+    status, body = call('POST', '/rest/v1/rpc/claim_join_key', {
+        'p_code': code, 'p_uid': uid, 'p_email': None, 'p_display_name': 'John anak Ali',
+        'p_technician': 'John', 'p_phone': '0123456789', 'p_provider': 'anonymous',
+    })
+    row = body[0] if isinstance(body, list) and body else body
+    check('a technician with no email can join by phone', bool(row and row.get('ok')), f'{str(row)[:140]}')
+
+    status, body = call('GET', f'/rest/v1/staff_accounts?uid=eq.{uid}&select=phone,auth_provider,technician_name')
+    row = body[0] if isinstance(body, list) and body else {}
+    check('their phone number and method are recorded',
+          row.get('phone') == '0123456789' and row.get('auth_provider') == 'anonymous',
+          f'{row}')
+except Exception as exc:  # noqa: BLE001
+    check('a technician with no email can join by phone', False, str(exc)[:140])
+
 # ------------------------------------------------- the code itself is not readable
 status, body = call('GET', '/rest/v1/join_keys?select=code&limit=1')
 check('the plaintext code column is gone', status != 200 or not isinstance(body, list) or not (body and 'code' in body[0]),
