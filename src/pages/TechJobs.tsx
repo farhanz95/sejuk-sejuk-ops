@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../state/AppState';
-import { MAX_ATTACHMENTS, computeFinalAmount, money, validateCompletion } from '../lib/domain';
+import { MAX_ATTACHMENTS, amountProblem, computeFinalAmount, money, validateCompletion } from '../lib/domain';
 import type { PaymentMethod } from '../lib/types';
-import { Card, EmptyState, Field, Modal, MoneyText, SectionTitle, StatCard, StatusPill, TimeText } from '../components/ui';
+import { Card, EmptyState, Field, Modal, MoneyInput, MoneyText, SectionTitle, StatCard, StatusPill, TimeText } from '../components/ui';
+import { DemoFillButton } from '../components/DemoFillButton';
 import { SupabaseRepo } from '../lib/repo';
 
 const METHODS: PaymentMethod[] = ['Cash', 'Bank Transfer', 'DuitNow QR', 'Card'];
@@ -133,6 +134,10 @@ export default function TechJobs() {
   }, [myJobs, data.reports, query, scope, when]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
+  // Inline complaints so the field itself explains the refusal.
+  const extraIssue = amountProblem(extra, { label: 'Extra charges' });
+  const paidIssue = paid === '' ? null : amountProblem(paid, { label: 'Payment amount' });
+
   const openOrder = openNo ? data.orders.find((o) => o.order_no === openNo) : undefined;
   const openReport = openNo ? data.reports.find((r) => r.order_no === openNo) : undefined;
   const due = openOrder ? computeFinalAmount(openOrder.quoted_price, Number(extra || 0)) : 0;
@@ -169,6 +174,18 @@ export default function TechJobs() {
       mapped.push({ name: f.name, mime: f.type || 'application/octet-stream', size: f.size, url: URL.createObjectURL(f) });
     }
     setFiles((prev) => [...prev, ...mapped]);
+    setErrors([]);
+  };
+
+  /** One tap fills the report with plausible field data — for testing the flow
+   *  without typing a whole report on a phone. */
+  const fillSample = () => {
+    const sampleExtra = 25;
+    setWorkDone('Chemical cleaned the indoor unit, topped up gas, tested cooling for 15 minutes.');
+    setExtra(String(sampleExtra));
+    setRemarks('Customer asked for a reminder in 6 months. Filter was dusty.');
+    setPaid(String(computeFinalAmount(openOrder?.quoted_price ?? 0, sampleExtra)));
+    setMethod('Cash');
     setErrors([]);
   };
 
@@ -439,8 +456,17 @@ export default function TechJobs() {
             </Field>
 
             <div className="grid gap-x-4 md:grid-cols-2">
-              <Field label="Extra charges (RM)" hint="Parts, gas, additional units">
-                <input className="input" type="number" min={0} step="0.01" value={extra} onChange={(e) => setExtra(e.target.value)} />
+              <Field
+                label="Extra charges (RM)"
+                hint={extraIssue ?? 'Parts, gas, additional units — leave 0 if there were none'}
+              >
+                <MoneyInput
+                  value={extra}
+                  onChange={setExtra}
+                  invalid={!!extraIssue}
+                  prefix="RM"
+                  ariaLabel="Extra charges in ringgit"
+                />
               </Field>
               <Field label="Final amount (auto)">
                 <input className="input font-semibold" value={money(due)} disabled />
@@ -483,8 +509,16 @@ export default function TechJobs() {
 
             <SectionTitle>Payment received (optional bonus)</SectionTitle>
             <div className="grid gap-x-4 md:grid-cols-2">
-              <Field label="Payment amount (RM)">
-                <input className="input" type="number" min={0} step="0.01" value={paid} onChange={(e) => setPaid(e.target.value)} placeholder="leave empty if unpaid" />
+              <Field label="Payment amount (RM)" hint={paidIssue ?? undefined}>
+                <MoneyInput
+                  value={paid}
+                  onChange={setPaid}
+                  invalid={!!paidIssue}
+                  prefix="RM"
+                  defaultValue=""
+                  placeholder="leave empty if unpaid"
+                  ariaLabel="Payment received in ringgit"
+                />
               </Field>
               <Field label="Payment method">
                 <select className="input" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} disabled={paid === ''}>
@@ -533,6 +567,7 @@ export default function TechJobs() {
                 Signed by {actor.name} · <TimeText iso={new Date().toISOString()} withDate={false} />
               </span>
             </div>
+            <DemoFillButton onFill={fillSample} label="Fill this report with sample data" />
 
             {/* The confirm step — an in-app panel, not window.confirm (which
                 looks alien in a field app and cannot show what is about to be

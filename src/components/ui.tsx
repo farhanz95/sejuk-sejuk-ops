@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { OrderStatus } from '../lib/types';
 import { useApp } from '../state/AppState';
 
@@ -47,6 +47,68 @@ export function StatCard({ label, value, sub, tone = 'default' }: { label: strin
       <div className={`mt-1 text-2xl font-bold ${tones[tone]}`}>{value}</div>
       {sub ? <div className="mt-1 text-xs text-slate-500">{sub}</div> : null}
     </Card>
+  );
+}
+
+/**
+ * A money field that is ready to type into.
+ *
+ * A field showing "0" makes you backspace before you can enter anything, which
+ * is silly on a phone in the field. So: the 0 disappears the moment you focus
+ * (nothing is deleted unless you actually type), and it comes back on blur if
+ * you leave the field empty — the value stored for the form never becomes NaN.
+ */
+export function MoneyInput({
+  value,
+  onChange,
+  placeholder = '0',
+  id,
+  ariaLabel,
+  invalid = false,
+  defaultValue = '0',
+  disabled = false,
+  className = '',
+  prefix,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder?: string;
+  id?: string;
+  ariaLabel?: string;
+  invalid?: boolean;
+  defaultValue?: string;
+  disabled?: boolean;
+  className?: string;
+  prefix?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const numeric = value === '' ? 0 : Number(value);
+  const isZero = value === '' || numeric === 0;
+  const shown = focused && isZero ? '' : value;
+
+  return (
+    <span className="relative block">
+      {prefix ? (
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500">{prefix}</span>
+      ) : null}
+      <input
+        id={id}
+        aria-label={ariaLabel}
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        disabled={disabled}
+        className={`input ${prefix ? '!pl-11' : ''} ${invalid ? '!border-rose-300 !bg-rose-50' : ''} ${className}`}
+        value={shown}
+        placeholder={placeholder}
+        onFocus={() => setFocused(true)}
+        onChange={(e) => onChange(e.target.value.replace(/[^0-9.\-]/g, ''))}
+        onBlur={() => {
+          setFocused(false);
+          if (value === '' || Number(value) === 0) onChange(defaultValue);
+        }}
+      />
+    </span>
   );
 }
 

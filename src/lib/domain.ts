@@ -80,13 +80,15 @@ export interface OrderDraft {
 export function validateOrderDraft(d: OrderDraft): string[] {
   const errors: string[] = [];
   if (!d.customer_name?.trim()) errors.push('Customer name is required.');
-  if (!d.phone?.trim()) errors.push('Phone is required.');
-  if (!/^[0-9+\-\s()]{7,}$/.test(d.phone?.trim() ?? '')) errors.push('Phone looks invalid.');
+  if (d.customer_name && d.customer_name.trim().length > 80) errors.push('Customer name is too long.');
+  const phoneIssue = phoneProblem(d.phone ?? '');
+  if (phoneIssue) errors.push(phoneIssue);
   if (!d.address?.trim()) errors.push('Address is required.');
+  if (d.address && d.address.trim().length > 200) errors.push('Address is too long.');
   if (!d.problem_description?.trim()) errors.push('Problem description is required.');
   if (!d.service_type?.trim()) errors.push('Service type is required.');
-  const price = typeof d.quoted_price === 'string' ? Number(d.quoted_price) : d.quoted_price;
-  if (!Number.isFinite(price) || price < 0) errors.push('Quoted price must be a number of 0 or more.');
+  const priceIssue = amountProblem(d.quoted_price ?? '', { label: 'Quoted price', required: true });
+  if (priceIssue) errors.push(priceIssue);
   if (d.assigned_technician && !TECHNICIANS.includes(d.assigned_technician as Technician)) {
     errors.push('Assigned technician must be one of the 4 field teams.');
   }
@@ -103,16 +105,62 @@ export interface CompletionDraft {
   payment_method?: string | null;
 }
 
+/**
+ * Malaysian mobile/landline numbers, however they were typed:
+ * 0123456789, 012-345 6789, +60 12-345 6789, 60123456789.
+ *
+ * Returns the reason it does not look like a phone number, or null when it is
+ * fine — callers show the returned string beside the field.
+ */
+export function phoneProblem(raw: string): string | null {
+  const value = (raw ?? '').trim();
+  if (!value) return 'Enter a phone number.';
+  const digits = value.replace(/[^0-9]/g, '');
+  if (/[A-Za-z]/.test(value)) return 'A phone number cannot contain letters.';
+  if (digits.length < 9) return 'That looks short — a Malaysian number has at least 9 digits.';
+  if (digits.length > 13) return 'That looks too long for a phone number.';
+  // +60 / 60 prefixes are the country code: 60123456789 and +60 12-345 6789 are
+  // both 0123456789 written differently, so put the local 0 back.
+  const local = digits.startsWith('60') ? (digits.startsWith('600') ? digits : `0${digits.slice(2)}`) : digits;
+  if (!local.startsWith('0')) return 'Start with 0 (or +60) — e.g. 012-345 6789.';
+  if (local.length < 9 || local.length > 11) return 'A Malaysian number is 9-11 digits after the leading 0.';
+  if (!/^0[1-9]/.test(local)) return 'The second digit cannot be 0 — e.g. 012-345 6789.';
+  return null;
+}
+
+/** Canonical form for storage: 0123456789 (the 60 prefix dropped). */
+export function normalisePhone(raw: string): string {
+  const digits = (raw ?? '').replace(/[^0-9]/g, '');
+  return digits.startsWith('60') ? `0${digits.slice(2)}` : digits;
+}
+
+/** A money field: a real number, not negative, not silly, at most 2 decimals. */
+export function amountProblem(raw: string | number, opts: { label?: string; max?: number; required?: boolean } = {}): string | null {
+  const label = opts.label ?? 'Amount';
+  const max = opts.max ?? 100000;
+  const text = typeof raw === 'number' ? String(raw) : (raw ?? '').trim();
+  if (text === '') return opts.required ? `${label} is required.` : null;
+  if (!/^-?\d*(\.\d+)?$/.test(text)) return `${label} must be a number, without spaces or letters.`;
+  const value = Number(text);
+  if (!Number.isFinite(value)) return `${label} must be a number.`;
+  if (value < 0) return `${label} cannot be negative.`;
+  if (value > max) return `${label} looks too large — check for a typo (max ${max}).`;
+  if (/\.\d{3,}/.test(text)) return `${label} can have at most 2 decimal places.`;
+  return null;
+}
+
 export function validateCompletion(d: CompletionDraft, quotedPrice: number): string[] {
   const errors: string[] = [];
   if (!d.work_done?.trim() || d.work_done.trim().length < 3) errors.push('Describe the work done.');
+  const extraProblem = amountProblem(d.extra_charges ?? 0, { label: 'Extra charges' });
+  if (extraProblem) errors.push(extraProblem);
   const extra = typeof d.extra_charges === 'string' ? Number(d.extra_charges || 0) : d.extra_charges;
-  if (!Number.isFinite(extra) || extra < 0) errors.push('Extra charges must be 0 or more.');
   if (d.attachmentCount > MAX_ATTACHMENTS) errors.push(`Maximum ${MAX_ATTACHMENTS} files per job.`);
   if (d.payment_amount !== null && d.payment_amount !== undefined && d.payment_amount !== '') {
     const paid = Number(d.payment_amount);
     const due = computeFinalAmount(quotedPrice, extra);
-    if (!Number.isFinite(paid) || paid < 0) errors.push('Payment amount must be 0 or more.');
+    const paidProblem = amountProblem(d.payment_amount as string | number, { label: 'Payment amount' });
+    if (paidProblem) errors.push(paidProblem);
     else if (paid > due + 0.001) errors.push(`Payment cannot exceed the final amount (${money(due)}).`);
     if (!d.payment_method) errors.push('Choose a payment method.');
   }

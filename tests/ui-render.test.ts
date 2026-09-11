@@ -66,8 +66,10 @@ async function typeInto(input: Element, value: string) {
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   assert.ok(setter, 'the native value setter exists');
   await act(async () => {
+    (input as HTMLElement).focus();
     setter!.call(input, value);
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   });
 }
 
@@ -443,4 +445,97 @@ test('completing a job asks for confirmation instead of submitting straight away
   const after = text();
   assert.match(after, /completed/i, 'the job is reported as completed');
   assert.match(after, /wa\.me|WhatsApp/i, 'and the customer message is offered');
+});
+
+
+test('the sample-data button fills a long form in one tap', async () => {
+  await mount('/orders');
+  await clickText('+ New order');
+  const fill = container.querySelector('button[title="Fill this form with sample data"]');
+  assert.ok(fill, 'the draggable filler is rendered inside the form');
+  await act(async () => {
+    fill!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  const value = (placeholder: string) => (inputByPlaceholder(placeholder) as HTMLInputElement).value;
+  assert.equal(value('Ahmad Zaki'), 'Sample Customer', 'the customer name was filled');
+  assert.equal(value('012-3456789'), '012-345 6789', 'a valid phone number was filled');
+  assert.equal(value('180'), '180', 'a quoted price was filled');
+  assert.ok(!/Enter a phone number|cannot contain letters/i.test(text()), 'the sample passes the phone rule');
+  assert.ok(!/must be a number|negative|too large/i.test(text()), 'the sample passes the amount rule');
+});
+
+test('pressing the filler without moving fills, dragging does not', async () => {
+  await mount('/orders');
+  await clickText('+ New order');
+  const fill = container.querySelector('button[title="Fill this form with sample data"]') as HTMLElement;
+  assert.ok(fill);
+  // a real drag: pointer moves well past the slop threshold, so no fill happens
+  await act(async () => {
+    fill.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 40, clientY: 40 }));
+    fill.dispatchEvent(new dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 200, clientY: 300 }));
+    fill.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true, clientX: 200, clientY: 300 }));
+  });
+  assert.ok(!/Sample Customer/.test(text()), 'dragging the button must not fill the form');
+});
+
+test('a money field clears its 0 on focus and restores it on blur', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+  await clickText('Complete job');
+  assert.match(text(), /Complete SS-2026-/);
+
+  const extra = inputByPlaceholder('0') as HTMLInputElement;
+  assert.equal(extra.value, '0', 'the field starts at 0');
+
+  await act(async () => {
+    extra.focus();
+  });
+  assert.equal(extra.value, '', 'focusing clears the 0 so you can just type');
+
+  await act(async () => {
+    extra.blur();
+  });
+  assert.equal(extra.value, '0', 'leaving it empty restores the 0');
+});
+
+test('the phone and amount rules complain beside the field', async () => {
+  await mount('/orders');
+  await clickText('+ New order');
+
+  const phone = inputByPlaceholder('012-3456789');
+  await typeInto(phone, 'abc');
+  assert.match(text(), /cannot contain letters/i, 'the phone complaint is shown');
+
+  const price = inputByPlaceholder('180') as HTMLInputElement;
+  // Spaces and letters are stripped as you type, so what reaches the rule is a number
+  await typeInto(price, '12 0a00');
+  assert.equal(price.value, '12000', 'the field keeps digits, a dot and a minus only');
+
+  await typeInto(price, '9999999');
+  assert.match(text(), /too large/i, 'an implausible amount is refused');
+
+  await typeInto(price, '180');
+  await typeInto(phone, '012-345 6789');
+  assert.ok(!/cannot contain letters/i.test(text()), 'fixing the phone clears the complaint');
+  assert.ok(!/too large/i.test(text()), 'fixing the amount clears its complaint');
+});
+
+test('the completion report can be filled with sample data', async () => {
+  await mount('/jobs');
+  await selectRole('Technician:Ali');
+  await clickText('My Jobs');
+  await clickText('Complete job');
+  const fill = container.querySelector('button[title="Fill this report with sample data"]');
+  assert.ok(fill, 'the filler is rendered in the report form');
+  await act(async () => {
+    fill!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  const workDone = textareaByPlaceholder('Chemical cleaned indoor unit') as HTMLTextAreaElement;
+  assert.match(workDone.value, /Chemical cleaned the indoor unit/, 'work done was filled');
+  assert.match(workDone.value, /tested cooling/, 'the whole sample sentence was used');
+  const remarks = inputByPlaceholder('Customer satisfied') as HTMLInputElement;
+  assert.match(remarks.value, /reminder in 6 months/, 'remarks were filled');
+  const extra = inputByPlaceholder('0') as HTMLInputElement;
+  assert.equal(extra.value, '25', 'extra charges were filled');
 });

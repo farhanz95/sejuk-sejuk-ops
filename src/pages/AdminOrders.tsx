@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppState';
 import { SERVICE_TYPES, TECHNICIANS, type OrderStatus, type ServiceType, type Technician } from '../lib/types';
-import { money, nextOrderNo, validateOrderDraft, type OrderDraft } from '../lib/domain';
-import { Card, EmptyState, Field, MoneyText, SectionTitle, StatCard, StatusPill, TimeText, Modal } from '../components/ui';
+import { amountProblem, money, nextOrderNo, normalisePhone, phoneProblem, validateOrderDraft, type OrderDraft } from '../lib/domain';
+import { Card, EmptyState, Field, MoneyInput, MoneyText, SectionTitle, StatCard, StatusPill, TimeText, Modal } from '../components/ui';
+import { DemoFillButton } from '../components/DemoFillButton';
 import DocumentImport from '../components/DocumentImport';
 import type { ExtractedFields } from '../lib/doc-fields';
 
@@ -70,6 +71,27 @@ export default function AdminOrders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.orders, query, status, when]);
 
+  // Shown under the field as you leave it, so the office never has to guess why
+  // Save was refused.
+  const phoneIssue = draft.phone.trim() ? phoneProblem(draft.phone) : null;
+  const priceIssue = amountProblem(draft.quoted_price ?? '', { label: 'Quoted price' });
+
+  /** One tap fills the whole order with plausible data — for testing a screen
+   *  without typing a form on a phone. Values satisfy every validator. */
+  const fillSample = () => {
+    setDraft({
+      customer_name: 'Sample Customer',
+      phone: '012-345 6789',
+      address: 'No. 27, Jalan Melati 3/2, Taman Melati, 53100 Kuala Lumpur',
+      problem_description: 'Aircond not cold, water dripping from the indoor unit, remote beeps twice.',
+      service_type: 'Cleaning',
+      quoted_price: '180',
+      assigned_technician: 'Ali',
+      admin_notes: 'Gate code 4821. Customer prefers a morning slot.',
+    });
+    setErrors([]);
+  };
+
   /** What the office needs to act on: work nobody owns, work in flight, work
    *  waiting on the manager, and how stale the oldest open job is. */
   const workLog = useMemo(() => {
@@ -99,7 +121,7 @@ export default function AdminOrders() {
     setSaving(true);
     const order = await createOrder({
       customer_name: draft.customer_name.trim(),
-      phone: draft.phone.trim(),
+      phone: normalisePhone(draft.phone),
       address: draft.address.trim(),
       problem_description: draft.problem_description.trim(),
       service_type: draft.service_type as ServiceType,
@@ -298,8 +320,21 @@ export default function AdminOrders() {
               <Field label="Customer name">
                 <input className="input" value={draft.customer_name} onChange={(e) => setDraft({ ...draft, customer_name: e.target.value })} placeholder="e.g. Ahmad Zaki" />
               </Field>
-              <Field label="Phone">
-                <input className="input" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} placeholder="012-3456789" />
+              <Field label="Phone" hint={phoneIssue ?? 'Malaysian format, e.g. 012-345 6789'}>
+                <input
+                  className={`input ${phoneIssue ? '!border-rose-300 !bg-rose-50' : ''}`}
+                  value={draft.phone}
+                  inputMode="tel"
+                  onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+                  onBlur={() => {
+                    // Keep the canonical 0123456789 so the same customer is found
+                    // however the number was written on the job sheet.
+                    if (draft.phone.trim() && !phoneProblem(draft.phone)) {
+                      setDraft({ ...draft, phone: normalisePhone(draft.phone) });
+                    }
+                  }}
+                  placeholder="012-3456789"
+                />
               </Field>
             </div>
 
@@ -312,8 +347,16 @@ export default function AdminOrders() {
             </Field>
 
             <div className="grid gap-x-4 md:grid-cols-2">
-              <Field label="Quoted price (RM)">
-                <input className="input" type="number" min={0} step="0.01" value={draft.quoted_price} onChange={(e) => setDraft({ ...draft, quoted_price: e.target.value })} placeholder="180" />
+              <Field label="Quoted price (RM)" hint={priceIssue ?? 'Amount in ringgit, e.g. 180 or 180.50'}>
+                <MoneyInput
+                  // draft keeps string | number for older callers; the input is text
+                  value={String(draft.quoted_price ?? '')}
+                  onChange={(next) => setDraft({ ...draft, quoted_price: next })}
+                  invalid={!!priceIssue}
+                  prefix="RM"
+                  placeholder="180"
+                  defaultValue="0"
+                />
               </Field>
               <Field label="Assign technician" hint="Only Admin can assign — can also be done later">
                 <select className="input" value={draft.assigned_technician} onChange={(e) => setDraft({ ...draft, assigned_technician: e.target.value })}>
@@ -344,6 +387,7 @@ export default function AdminOrders() {
                 </span>
               ) : null}
             </div>
+            <DemoFillButton onFill={fillSample} />
           </>
         )}
       </Modal>

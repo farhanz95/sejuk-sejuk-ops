@@ -6,7 +6,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  amountProblem,
   computeFinalAmount,
+  normalisePhone,
+  phoneProblem,
   canAssign,
   canMarkDone,
   canReview,
@@ -152,4 +155,86 @@ test('AI workflow supervisor flags ballooning invoices and missing evidence', ()
 
   // quoted price of 0 must not produce a bogus ratio
   assert.deepEqual(supervisorFlags(order({ quoted_price: 0 }), report({ final_amount: 0, extra_charges: 0 })), []);
+});
+
+
+// ---------------------------------------------------------------- input rules
+
+test('phone numbers are accepted in every shape people write them', () => {
+  for (const ok of ['0123456789', '012-345 6789', '+60 12-345 6789', '60123456789', '03-1234 5678', '(03) 1234-5678']) {
+    assert.equal(phoneProblem(ok), null, `${ok} should be accepted`);
+  }
+});
+
+test('phone numbers that are obviously wrong are rejected with a reason', () => {
+  assert.match(phoneProblem('') ?? '', /Enter a phone number/);
+  assert.match(phoneProblem('12345') ?? '', /short/i);
+  assert.match(phoneProblem('0123456789012345') ?? '', /too long/i);
+  assert.match(phoneProblem('12-345 6789') ?? '', /Start with 0/);
+  assert.match(phoneProblem('call me') ?? '', /letters/i);
+  assert.match(phoneProblem('0012345678') ?? '', /second digit/i);
+});
+
+test('a stored phone keeps the leading 0 and drops the country code', () => {
+  assert.equal(normalisePhone('+60 12-345 6789'), '0123456789');
+  assert.equal(normalisePhone('012-345 6789'), '0123456789');
+  assert.equal(normalisePhone('60123456789'), '0123456789');
+});
+
+test('amounts are validated as money, not free text', () => {
+  assert.equal(amountProblem('180'), null);
+  assert.equal(amountProblem('180.50'), null);
+  assert.equal(amountProblem(0), null);
+  assert.equal(amountProblem('', { required: false }), null);
+  assert.match(amountProblem('', { required: true }) ?? '', /required/i);
+  assert.match(amountProblem('abc') ?? '', /must be a number/i);
+  assert.match(amountProblem('12 000') ?? '', /must be a number/i);
+  assert.match(amountProblem('-5') ?? '', /negative/i);
+  assert.match(amountProblem('3.999') ?? '', /2 decimal/i);
+  assert.match(amountProblem('9999999') ?? '', /too large/i);
+});
+
+test('the order draft uses the phone and price rules', () => {
+  const base = {
+    customer_name: 'Ahmad Zaki',
+    phone: '012-345 6789',
+    address: 'No. 12, Jalan Sejuk, Shah Alam',
+    problem_description: 'Not cold',
+    service_type: 'Cleaning',
+    quoted_price: '180',
+    assigned_technician: 'Ali',
+    admin_notes: '',
+  };
+  assert.deepEqual(validateOrderDraft(base as never), []);
+
+  const badPhone = validateOrderDraft({ ...base, phone: 'abc' } as never);
+  assert.ok(badPhone.some((e) => /letters/i.test(e)), JSON.stringify(badPhone));
+
+  const badPrice = validateOrderDraft({ ...base, quoted_price: '-10' } as never);
+  assert.ok(badPrice.some((e) => /negative/i.test(e)), JSON.stringify(badPrice));
+
+  const hugePrice = validateOrderDraft({ ...base, quoted_price: '9999999' } as never);
+  assert.ok(hugePrice.some((e) => /too large/i.test(e)), JSON.stringify(hugePrice));
+});
+
+test('the completion report validates the money fields it collects', () => {
+  const draft = {
+    work_done: 'Serviced the unit',
+    extra_charges: '25',
+    remarks: '',
+    technician_name: 'Ali',
+    attachmentCount: 0,
+    payment_amount: '100',
+    payment_method: 'Cash' as const,
+  };
+  assert.deepEqual(validateCompletion(draft, 320), []);
+
+  const badExtra = validateCompletion({ ...draft, extra_charges: '-5' }, 320);
+  assert.ok(badExtra.some((e) => /cannot be negative/i.test(e)), JSON.stringify(badExtra));
+
+  const badPayment = validateCompletion({ ...draft, payment_amount: 'abc' }, 320);
+  assert.ok(badPayment.some((e) => /must be a number/i.test(e)), JSON.stringify(badPayment));
+
+  const overPaid = validateCompletion({ ...draft, payment_amount: '500' }, 320);
+  assert.ok(overPaid.some((e) => /cannot exceed/i.test(e)), JSON.stringify(overPaid));
 });

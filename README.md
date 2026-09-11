@@ -340,6 +340,29 @@ where nobody was looking. Three changes:
   an explanation that nothing was submitted, instead of a button that appears to
   do nothing.
 
+#### Faster to test, harder to mistype (2026-09-11)
+
+Typing a whole service order (customer, phone, address, problem, price, notes) or
+a completion report just to check a screen is slow, and it is how bad data gets
+in. Three changes:
+
+- **A draggable sample-data button** on every long form (the New-order dialog and
+  the technician's completion report). A 52px amber circle that fills the form
+  with values that satisfy every rule; drag it anywhere (the position is
+  remembered) and a drag never triggers a fill. It exists so a reviewer can
+  exercise a screen in one tap — `src/components/DemoFillButton.tsx`.
+- **Real validation for phone and amounts** — `phoneProblem()` accepts Malaysian
+  numbers however they are written (`0123456789`, `012-345 6789`,
+  `+60 12-345 6789`, `03-1234 5678`), rejects letters, too-short numbers and a
+  leading `12-`, and `normalisePhone()` stores the canonical `0123456789` so the
+  same customer is found however the job sheet was written. `amountProblem()`
+  rejects text, negatives, more than 2 decimals and implausible sizes; both
+  surface **under the field** as you leave it, not only in a list at the top.
+- **Money fields are ready to type into** — a field showing `0` (extra charges)
+  clears itself on focus and restores `0` on blur if left empty, so nobody has to
+  backspace a zero before entering a value. Implemented once as `MoneyInput`
+  (`src/components/ui.tsx`) and used for extra charges, payment and quoted price.
+
 ## 6. Security & access
 
 Authentication is the **mock login / role switch** the brief allows (header selector: Admin, 4 named technicians,
